@@ -3,13 +3,22 @@
 import { useEffect, useRef, useState } from 'react'
 import { TranscriptSegment, SegmentMeta } from '@/types'
 import { Play, Pause, SkipForward, ListFilter } from 'lucide-react'
+
+function sanitizeRuby(html: string): string {
+  return html.replace(/<\/?(?!ruby|rt|rp\b)[a-zA-Z][^>]*>/g, '')
+}
 import clsx from 'clsx'
+import HighlightOverlay from './HighlightOverlay' // Assuming HighlightOverlay is in a separate file
+import HandwritingCanvas from './HandwritingCanvas' // Assuming HandwritingCanvas is in a separate file
 
 interface ReplayModeProps {
   segments: TranscriptSegment[]
   metas: Map<string, SegmentMeta>
   onSeek: (startTime: number) => void
   onClose: () => void
+  activeTool: 'pen' | 'highlighter' | 'eraser'
+  brushSize: number
+  brushColor: string
 }
 
 export default function ReplayMode({
@@ -17,6 +26,9 @@ export default function ReplayMode({
   metas,
   onSeek,
   onClose,
+  activeTool,
+  brushSize,
+  brushColor,
 }: ReplayModeProps) {
   const queue = segments.filter((s) => {
     const m = metas.get(s.id)
@@ -28,7 +40,7 @@ export default function ReplayMode({
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
 
   const stopCheck = () => {
-    if (intervalRef.current) clearInterval(intervalRef.current)
+    if (intervalRef.current) clearTimeout(intervalRef.current)
     intervalRef.current = null
   }
 
@@ -91,6 +103,7 @@ export default function ReplayMode({
   }
 
   const current = queue[currentIdx]
+  const currentMeta = current ? metas.get(current.id) : null
 
   return (
     <div className="flex flex-col gap-4">
@@ -116,13 +129,46 @@ export default function ReplayMode({
       </div>
 
       {/* Current sentence */}
-      <div className="p-4 rounded-2xl bg-slate-800 border border-indigo-500/40">
-        <p
-          className="text-xl text-white leading-relaxed"
-          dangerouslySetInnerHTML={{ __html: current?.kanji ?? '' }}
-        />
-        {current?.translation && (
-          <p className="text-sm text-slate-400 mt-1">{current.translation}</p>
+      <div className="p-4 rounded-2xl bg-slate-800 border border-indigo-500/40 relative overflow-hidden">
+        <div className="relative z-10">
+          <p
+            className="text-xl text-white leading-relaxed"
+            dangerouslySetInnerHTML={{ __html: sanitizeRuby(current?.kanji ?? '') }}
+          />
+          {current?.translation && (
+            <p className="text-sm text-slate-400 mt-1">{current.translation}</p>
+          )}
+        </div>
+
+        {/* Highlight Overlay (Read-only in Replay Mode) */}
+        {currentMeta?.highlightCanvas && (
+          <div className="absolute inset-0 z-0 pointer-events-none">
+            <HighlightOverlay
+              segmentId={current.id}
+              initialData={currentMeta.highlightCanvas}
+              onSave={() => {}}
+              onClear={() => {}}
+              isActive={false}
+              activeTool={activeTool}
+              brushSize={brushSize}
+              brushColor={brushColor}
+            />
+          </div>
+        )}
+
+        {/* Handwriting Canvas (Read-only in Replay Mode) */}
+        {currentMeta?.handwriting && (
+          <div className="w-full mt-3 pointer-events-none relative z-20">
+            <HandwritingCanvas
+              segmentId={current.id}
+              initialData={currentMeta.handwriting}
+              onSave={() => {}}
+              onClear={() => {}}
+              activeTool={activeTool}
+              brushSize={brushSize}
+              brushColor={brushColor}
+            />
+          </div>
         )}
       </div>
 
@@ -146,7 +192,7 @@ export default function ReplayMode({
             <span className="w-5 text-center text-xs font-mono text-slate-500">{i + 1}</span>
             <span
               className="truncate"
-              dangerouslySetInnerHTML={{ __html: seg.kanji }}
+              dangerouslySetInnerHTML={{ __html: sanitizeRuby(seg.kanji) }}
             />
           </button>
         ))}

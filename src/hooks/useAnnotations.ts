@@ -3,6 +3,8 @@
 import { useState, useCallback, useRef } from 'react'
 import { SegmentMeta, TagType } from '@/types'
 
+export type SaveStatus = 'idle' | 'saving' | 'saved'
+
 function getStorageKey(videoId: string) {
   return `annotations_${videoId}`
 }
@@ -28,10 +30,13 @@ export function useAnnotations({ videoId, onStorageFull }: UseAnnotationsOptions
   const [metas, setMetas] = useState<Map<string, SegmentMeta>>(() =>
     loadFromStorage(videoId)
   )
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle')
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const savedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const persist = useCallback(
     (nextMap: Map<string, SegmentMeta>) => {
+      setSaveStatus('saving')
       if (debounceRef.current) clearTimeout(debounceRef.current)
       debounceRef.current = setTimeout(() => {
         try {
@@ -43,7 +48,11 @@ export function useAnnotations({ videoId, onStorageFull }: UseAnnotationsOptions
           } else {
             localStorage.setItem(getStorageKey(videoId), JSON.stringify(arr))
           }
+          setSaveStatus('saved')
+          if (savedTimerRef.current) clearTimeout(savedTimerRef.current)
+          savedTimerRef.current = setTimeout(() => setSaveStatus('idle'), 2000)
         } catch (err) {
+          setSaveStatus('idle')
           if (
             err instanceof DOMException &&
             (err.name === 'QuotaExceededError' || err.name === 'NS_ERROR_DOM_QUOTA_REACHED')
@@ -146,6 +155,7 @@ export function useAnnotations({ videoId, onStorageFull }: UseAnnotationsOptions
 
   return {
     metas,
+    saveStatus,
     saveHighlightCanvas,
     clearHighlightCanvas,
     setTag,

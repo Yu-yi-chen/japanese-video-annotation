@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { TranscriptSegment, SegmentMeta, TagType } from '@/types'
 import HandwritingCanvas from './HandwritingCanvas'
 import HighlightOverlay from './HighlightOverlay'
@@ -17,6 +17,10 @@ interface TranscriptViewProps {
   onSetTag: (id: string, tag: TagType | null) => void
   onSaveHandwriting: (id: string, base64: string) => void
   onClearHandwriting: (id: string) => void
+  activeTool: 'pen' | 'highlighter' | 'eraser'
+  brushSize: number
+  brushColor: string
+  scrollContainerRef?: React.RefObject<HTMLDivElement>
 }
 
 const TAG_CONFIG: Record<TagType, { icon: React.ReactNode; label: string; color: string }> = {
@@ -35,18 +39,70 @@ export default function TranscriptView({
   onSetTag,
   onSaveHandwriting,
   onClearHandwriting,
+  activeTool,
+  brushSize,
+  brushColor,
+  scrollContainerRef,
 }: TranscriptViewProps) {
+  const [searchQuery, setSearchQuery] = useState('')
   const activeRef = useRef<HTMLDivElement>(null)
+  const userScrollingRef = useRef(false)
+  const scrollTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  // Pause auto-scroll for 3s after user manually scrolls
+  useEffect(() => {
+    const container = scrollContainerRef?.current
+    if (!container) return
+    const onScroll = () => {
+      userScrollingRef.current = true
+      if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current)
+      scrollTimerRef.current = setTimeout(() => {
+        userScrollingRef.current = false
+      }, 3000)
+    }
+    container.addEventListener('scroll', onScroll, { passive: true })
+    return () => {
+      container.removeEventListener('scroll', onScroll)
+      if (scrollTimerRef.current) clearTimeout(scrollTimerRef.current)
+    }
+  }, [scrollContainerRef])
 
   useEffect(() => {
-    if (activeRef.current) {
+    if (activeRef.current && !userScrollingRef.current) {
       activeRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
     }
   }, [activeId])
 
+  const q = searchQuery.trim().toLowerCase()
+  const visibleSegments = q
+    ? segments.filter(s =>
+        s.kanji.toLowerCase().includes(q) ||
+        (s.translation ?? '').toLowerCase().includes(q)
+      )
+    : segments
+
   return (
     <div className="flex flex-col gap-2 py-2">
-      {segments.map((seg) => {
+      {/* Search bar */}
+      <div className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-800/60 border border-slate-700/50 focus-within:border-indigo-500/50 transition-colors mb-1">
+        <Search className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+        <input
+          value={searchQuery}
+          onChange={e => setSearchQuery(e.target.value)}
+          placeholder="搜尋逐字稿…"
+          className="flex-1 bg-transparent text-sm text-slate-300 placeholder:text-slate-600 outline-none"
+        />
+        {q && (
+          <>
+            <span className="text-xs text-slate-500">{visibleSegments.length} 筆</span>
+            <button onClick={() => setSearchQuery('')} className="text-slate-500 hover:text-slate-300">
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </>
+        )}
+      </div>
+
+      {visibleSegments.map((seg) => {
         const meta = metas.get(seg.id)
         const isActive = seg.id === activeId
         const hasTimestamp = seg.startTime >= 0
@@ -98,7 +154,7 @@ export default function TranscriptView({
                       'text-lg leading-relaxed font-medium',
                       isActive ? 'text-white' : hasTimestamp ? 'text-slate-200' : 'text-slate-500'
                     )}
-                    dangerouslySetInnerHTML={{ __html: seg.kanji }}
+                    dangerouslySetInnerHTML={{ __html: sanitizeRuby(seg.kanji) }}
                   />
                   {seg.translation && (
                     <p className="text-xs text-slate-500 mt-0.5 relative z-20">{seg.translation}</p>
@@ -107,18 +163,28 @@ export default function TranscriptView({
                     <p className="text-[10px] text-slate-600 mt-0.5 relative z-20">點擊跳轉不適用（無時間戳）</p>
                   )}
                 </div>
-                {/* Pencil Highlight Overlay */}
-                <HighlightOverlay
-                  segmentId={seg.id}
-                  initialData={meta?.highlightCanvas ?? null}
-                  onSave={(base64) => onSaveHighlightCanvas(seg.id, base64)}
-                  onClear={() => onClearHighlightCanvas(seg.id)}
-                  isActive={isActive}
-                />
+                {/* Highlight Overlay Canvas (Layer 2) */}
+                <div 
+                  className={clsx(
+                    "absolute inset-0 z-0",
+                    activeTool === 'highlighter' || activeTool === 'eraser' ? "pointer-events-auto" : "pointer-events-none"
+                  )}
+                >
+                  <HighlightOverlay
+                    segmentId={seg.id}
+                    initialData={meta?.highlightCanvas ?? null}
+                    onSave={(base64) => onSaveHighlightCanvas(seg.id, base64)}
+                    onClear={() => onClearHighlightCanvas(seg.id)}
+                    isActive={isActive}
+                    activeTool={activeTool}
+                    brushSize={brushSize}
+                    brushColor={brushColor}
+                  />
+                </div>
               </div>
 
               {/* Annotation Controls */}
-              <div className="shrink-0 flex items-center gap-1.5">
+              <div className="relative z-30 shrink-0 flex items-center gap-1.5">
 
 
                 {/* Tag picker */}
@@ -148,12 +214,15 @@ export default function TranscriptView({
             )}
 
             {/* Handwriting Canvas */}
-            <div className="px-3 pb-3">
+            <div className="px-3 pb-3 relative z-20">
               <HandwritingCanvas
                 segmentId={seg.id}
                 initialData={meta?.handwriting ?? null}
                 onSave={(base64) => onSaveHandwriting(seg.id, base64)}
                 onClear={() => onClearHandwriting(seg.id)}
+                activeTool={activeTool}
+                brushSize={brushSize}
+                brushColor={brushColor}
               />
             </div>
           </div>
@@ -184,7 +253,7 @@ function TagPicker({
       >
         <Tag className="w-4 h-4" />
       </button>
-      <div className="absolute right-0 top-full mt-1 z-20 hidden group-hover:flex flex-col gap-1 p-1.5 rounded-xl bg-slate-900 border border-slate-700 shadow-2xl min-w-[90px]">
+      <div className="absolute right-0 top-full mt-1 z-[200] hidden group-hover:flex flex-col gap-1 p-1.5 rounded-xl bg-slate-900 border border-slate-700 shadow-2xl min-w-[90px]">
         {tags.map((tag) => (
           <button
             key={tag}
@@ -205,6 +274,11 @@ function TagPicker({
       </div>
     </div>
   )
+}
+
+/** Allow only ruby/rt/rp tags — strips everything else to prevent XSS */
+function sanitizeRuby(html: string): string {
+  return html.replace(/<\/?(?!ruby|rt|rp\b)[a-zA-Z][^>]*>/g, '')
 }
 
 function formatTime(seconds: number): string {

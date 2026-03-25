@@ -9,28 +9,34 @@ interface HighlightOverlayProps {
   initialData: string | null
   onSave: (base64: string) => void
   onClear: () => void
-  isActive: boolean
+  isActive?: boolean
+  activeTool?: 'pen' | 'highlighter' | 'eraser'
+  brushSize?: number
+  brushColor?: string
 }
 
 // Fixed dimensions relative to the text block for simplicity.
 // In a real app we might dynamicly match text bounds, but for iPad N3 readers a fixed 80px height covering 1-2 lines is ideal.
 const CANVAS_HEIGHT = 80
-const HIGHLIGHT_WIDTH = 12
 
 export default function HighlightOverlay({
   segmentId,
   initialData,
   onSave,
   onClear,
-  isActive
+  isActive = false,
+  activeTool = 'highlighter',
+  brushSize = 20,
+  brushColor = 'rgba(250, 204, 21, 0.4)',
 }: HighlightOverlayProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const isDrawingRef = useRef(false)
   const lastPointRef = useRef<{ x: number; y: number } | null>(null)
   const [isEmpty, setIsEmpty] = useState(!initialData)
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const historyRef = useRef<string[]>([initialData || ''])
 
-  // Restore
+  // Restore from initial data
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -45,7 +51,37 @@ export default function HighlightOverlay({
     } else {
       setIsEmpty(true)
     }
+    historyRef.current = [initialData || '']
   }, [initialData, segmentId])
+
+  // Global Undo Listener
+  useEffect(() => {
+    const handleUndo = () => {
+      // Basic undo: if this canvas was just drawn on, pop the history
+      if (historyRef.current.length > 1) {
+        historyRef.current.pop() // remove latest
+        const previousState = historyRef.current[historyRef.current.length - 1]
+        
+        const canvas = canvasRef.current
+        if (!canvas) return
+        const ctx = canvas.getContext('2d')
+        if (!ctx) return
+        
+        ctx.clearRect(0, 0, canvas.width, canvas.height)
+        if (previousState) {
+          const img = new Image()
+          img.onload = () => ctx.drawImage(img, 0, 0)
+          img.src = previousState
+          onSave(previousState)
+        } else {
+          setIsEmpty(true)
+          onClear()
+        }
+      }
+    }
+    window.addEventListener('annotation-undo', handleUndo)
+    return () => window.removeEventListener('annotation-undo', handleUndo)
+  }, [onSave, onClear])
 
   // Resize observer
   useEffect(() => {
@@ -78,7 +114,7 @@ export default function HighlightOverlay({
     saveTimerRef.current = setTimeout(() => {
       const canvas = canvasRef.current
       if (canvas) {
-        const base64 = canvas.toDataURL('image/png')
+        const base64 = canvas.toDataURL('image/webp', 0.7)
         onSave(base64)
       }
     }, 400)
@@ -94,7 +130,7 @@ export default function HighlightOverlay({
   }
 
   const onPointerDown = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (e.pointerType !== 'pen') return
+    if (e.pointerType === 'touch' || activeTool === 'pen') return
     e.preventDefault()
     
     isDrawingRef.current = true
@@ -105,16 +141,19 @@ export default function HighlightOverlay({
     const pt = getPoint(e)
     lastPointRef.current = pt
 
+    const pressure = e.pressure > 0 ? e.pressure : 0.5
+    const lineWidth = brushSize * pressure
+
+    ctx.globalCompositeOperation = activeTool === 'eraser' ? 'destination-out' : 'source-over'
     ctx.beginPath()
-    ctx.arc(pt.x, pt.y, HIGHLIGHT_WIDTH / 2, 0, Math.PI * 2)
-    // Semi-transparent yellow highlight
-    ctx.fillStyle = 'rgba(251, 191, 36, 0.4)' 
+    ctx.arc(pt.x, pt.y, lineWidth / 2, 0, Math.PI * 2)
+    ctx.fillStyle = activeTool === 'eraser' ? 'rgba(0,0,0,1)' : brushColor
     ctx.fill()
     setIsEmpty(false)
-  }, [])
+  }, [activeTool, brushSize, brushColor])
 
   const onPointerMove = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (e.pointerType !== 'pen' || !isDrawingRef.current) return
+    if (e.pointerType !== 'pen' || !isDrawingRef.current || activeTool === 'pen') return
     e.preventDefault()
     
     const canvas = canvasRef.current!
@@ -122,26 +161,38 @@ export default function HighlightOverlay({
     const pt = getPoint(e)
     const last = lastPointRef.current
 
-    ctx.globalCompositeOperation = 'source-over'
+    const pressure = e.pressure > 0 ? e.pressure : 0.5
+    const lineWidth = brushSize * pressure
+
+    ctx.globalCompositeOperation = activeTool === 'eraser' ? 'destination-out' : 'source-over'
     ctx.beginPath()
     if (last) ctx.moveTo(last.x, last.y)
     ctx.lineTo(pt.x, pt.y)
     
-    ctx.strokeStyle = 'rgba(251, 191, 36, 0.4)'
-    ctx.lineWidth = HIGHLIGHT_WIDTH
+    ctx.strokeStyle = activeTool === 'eraser' ? 'rgba(0,0,0,1)' : brushColor
+    ctx.lineWidth = lineWidth
     ctx.lineCap = 'round'
     ctx.lineJoin = 'round'
     ctx.stroke()
 
     lastPointRef.current = pt
-  }, [])
+  }, [activeTool, brushSize, brushColor])
 
   const onPointerUp = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (e.pointerType !== 'pen') return
+    if (e.pointerType === 'touch' || activeTool === 'pen') return
     isDrawingRef.current = false
     lastPointRef.current = null
+
+    // Save state to history array for undo
+    const canvas = canvasRef.current
+    if (canvas) {
+      historyRef.current.push(canvas.toDataURL('image/png'))
+      // Keep only last 20 strokes to save memory
+      if (historyRef.current.length > 20) historyRef.current.shift()
+    }
+
     scheduleSave()
-  }, [scheduleSave])
+  }, [activeTool, scheduleSave])
 
   const handleClear = () => {
     const canvas = canvasRef.current

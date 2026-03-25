@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "日文影片精讀 & 手寫標註",
+  title: "Nihonote",
   description: "以 YouTube 影片學習日文，搭配逐字稿同步、手寫標註與 Apple Pencil 支援",
 };
 

@@ -4,16 +4,21 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 import VideoPlayer from '@/components/VideoPlayer'
 import TranscriptView from '@/components/TranscriptView'
 import ReplayMode from '@/components/ReplayMode'
+import FloatingToolbar from '@/components/FloatingToolbar'
+import Sidebar from '@/components/Sidebar'
 import { useAnnotations } from '@/hooks/useAnnotations'
 import { useSyncEngine } from '@/hooks/useSyncEngine'
 import { TagType, VideoSession } from '@/types'
 import demoData from '@/data/demo.json'
 import {
-  BookOpen,
   Trash2,
   Play,
   AlertCircle,
   X,
+  Menu,
+  Check,
+  Loader2,
+  Download,
 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -50,6 +55,36 @@ export default function Home() {
   const [videoId, setVideoId] = useState<string>('')
   const [session, setSession] = useState<VideoSession | null>(null)
   const [isPlayerReady, setIsPlayerReady] = useState(false)
+  const [mounted, setMounted] = useState(false)
+  
+  /* ── Layout Resizer ── */
+  const [leftWidth, setLeftWidth] = useState(45)
+  const transcriptScrollRef = useRef<HTMLDivElement>(null)
+
+  /* ── Annotation Tools ── */
+  const [activeTool, setActiveTool] = useState<'pen' | 'highlighter' | 'eraser'>('pen')
+  const [brushSize, setBrushSize] = useState(3)
+  const [brushColor, setBrushColor] = useState('#e0e0f0')
+  const [highlighterColor, setHighlighterColor] = useState('rgba(250, 204, 21, 0.4)')
+
+  /* ── Sidebar State ── */
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  // Cmd/Ctrl+Z global undo
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if ((e.metaKey || e.ctrlKey) && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault()
+        window.dispatchEvent(new CustomEvent('annotation-undo'))
+      }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
   const [mode, setMode] = useState<'read' | 'replay'>('read')
   const [toasts, setToasts] = useState<ToastItem[]>([])
   const [showClearConfirm, setShowClearConfirm] = useState(false)
@@ -72,7 +107,7 @@ export default function Home() {
   }, [])
 
   /* ── Annotations ── */
-  const { metas, saveHighlightCanvas, clearHighlightCanvas, setTag, saveHandwriting, clearHandwriting, clearAll, reloadForVideo } =
+  const { metas, saveStatus, saveHighlightCanvas, clearHighlightCanvas, setTag, saveHandwriting, clearHandwriting, clearAll, reloadForVideo } =
     useAnnotations({
       videoId: videoId || 'demo',
       onStorageFull: () =>
@@ -114,6 +149,38 @@ export default function Home() {
     setSession(demo)
   }, [])
 
+  const handleExport = () => {
+    if (!session) return
+    const annotated = session.segments
+      .filter(s => metas.has(s.id))
+      .map(s => {
+        const m = metas.get(s.id)!
+        return {
+          id: s.id,
+          startTime: s.startTime,
+          kanji: s.kanji.replace(/<[^>]+>/g, ''), // strip ruby tags for plain text
+          translation: s.translation ?? '',
+          tag: m.tag ?? null,
+          hasHighlight: m.highlightCanvas !== null,
+          hasHandwriting: m.handwriting !== null,
+        }
+      })
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      videoId: videoId || 'demo',
+      title: session.title ?? 'Nihonote Export',
+      segments: annotated,
+    }
+    const blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json' })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `nihonote_${videoId || 'demo'}_${new Date().toISOString().slice(0,10)}.json`
+    a.click()
+    URL.revokeObjectURL(url)
+    addToast('筆記已匯出', 'info')
+  }
+
   const handleClearAll = () => {
     clearAll()
     setShowClearConfirm(false)
@@ -127,14 +194,38 @@ export default function Home() {
   return (
     <div className="flex flex-col h-[100dvh] bg-[#0a0d14] overflow-hidden">
 
-      {/* ── Top Bar ── */}
-      <header className="shrink-0 flex items-center justify-between px-4 py-3 border-b border-slate-800 bg-[#0d111a]/80 backdrop-blur-sm">
-        <div className="flex items-center gap-2">
-          <BookOpen className="w-5 h-5 text-indigo-400" />
-          <span className="font-semibold text-sm text-slate-100 hidden sm:block">日文影片精讀</span>
+      {/* ── Header ── */}
+      <header className="h-16 shrink-0 bg-slate-900/50 backdrop-blur-md border-b border-slate-800 flex items-center justify-between px-4 sm:px-6 relative z-30">
+        <div className="flex items-center gap-3">
+          <button 
+            onClick={() => setIsSidebarOpen(true)}
+            className="p-2 -ml-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+            <Play className="w-4 h-4 text-white" />
+          </div>
+          <h1 className="text-lg font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">
+            Nihonote
+          </h1>
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Save status indicator */}
+          {saveStatus !== 'idle' && (
+            <div className={clsx(
+              'flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all',
+              saveStatus === 'saving'
+                ? 'text-slate-400'
+                : 'text-emerald-400'
+            )}>
+              {saveStatus === 'saving'
+                ? <Loader2 className="w-3 h-3 animate-spin" />
+                : <Check className="w-3 h-3" />}
+              {saveStatus === 'saving' ? '儲存中' : '已儲存'}
+            </div>
+          )}
           {/* Replay toggle */}
           <button
             onClick={() => setMode(mode === 'replay' ? 'read' : 'replay')}
@@ -148,6 +239,17 @@ export default function Home() {
             <Play className="w-3.5 h-3.5" />
             Replay{annotatedCount > 0 && <span className="ml-0.5 opacity-70">({annotatedCount})</span>}
           </button>
+
+          {/* Export */}
+          {annotatedCount > 0 && (
+            <button
+              onClick={handleExport}
+              className="p-1.5 rounded-xl text-slate-500 hover:text-indigo-400 hover:bg-indigo-950/30 transition-all"
+              title="匯出筆記"
+            >
+              <Download className="w-4 h-4" />
+            </button>
+          )}
 
           {/* Clear all */}
           {annotatedCount > 0 && (
@@ -184,10 +286,13 @@ export default function Home() {
       </header>
 
       {/* ── Main Content Area ── */}
-      <div className="flex-1 flex flex-col lg:flex-row min-h-0 overflow-hidden">
+      <div className="flex-1 flex flex-col lg:flex-row min-h-0 overflow-hidden relative">
         
         {/* Left Panel: Video & Session Title */}
-        <div className="w-full lg:w-5/12 xl:w-1/2 flex flex-col shrink-0 border-r border-slate-800 bg-[#080b12]">
+        <div 
+          className="w-full lg:w-auto flex flex-col shrink-0 bg-[#080b12]"
+          style={{ flexBasis: mounted && window.innerWidth >= 1024 ? `${leftWidth}%` : 'auto' }}
+        >
           {/* Player */}
           <div className="shrink-0 p-4 pb-0 w-full aspect-video">
             <VideoPlayer
@@ -211,37 +316,90 @@ export default function Home() {
           )}
         </div>
 
+        {/* Resizer Handle (Visible on lg+ screens) */}
+        <div 
+          className="hidden lg:flex w-2 cursor-col-resize items-center justify-center shrink-0 bg-slate-900 border-x border-slate-800 hover:bg-indigo-500/20 active:bg-indigo-500/40 transition-colors z-20 group"
+          onPointerDown={(e) => {
+            e.preventDefault();
+            const startX = e.clientX;
+            const startWidth = leftWidth;
+            
+            const handlePointerMove = (moveEvent: PointerEvent) => {
+              const deltaX = moveEvent.clientX - startX;
+              const newPct = startWidth + (deltaX / window.innerWidth) * 100;
+              setLeftWidth(Math.min(Math.max(newPct, 25), 75)); // Limit width between 25% and 75%
+            };
+            
+            const handlePointerUp = () => {
+              window.removeEventListener('pointermove', handlePointerMove);
+              window.removeEventListener('pointerup', handlePointerUp);
+              document.body.style.cursor = '';
+            };
+            
+            document.body.style.cursor = 'col-resize';
+            window.addEventListener('pointermove', handlePointerMove);
+            window.addEventListener('pointerup', handlePointerUp);
+          }}
+        >
+          <div className="w-0.5 h-8 bg-slate-700 rounded-full group-hover:bg-indigo-400/50 transition-colors" />
+        </div>
+
         {/* Right Panel: Transcript / Replay */}
         <div className="flex-1 flex flex-col min-w-0 bg-[#0a0d14] relative">
-          <div className="absolute inset-0 overflow-y-auto px-4 py-4 transcript-scroll">
-            {mode === 'replay' ? (
-              <ReplayMode
-                segments={session?.segments ?? []}
-                metas={metas}
-                onSeek={handleSeek}
-                onClose={() => setMode('read')}
-              />
-            ) : session ? (
-              <TranscriptView
-                segments={session.segments}
-                activeId={activeId}
-                metas={metas}
-                onSeek={handleSeek}
-                onSaveHighlightCanvas={saveHighlightCanvas}
-                onClearHighlightCanvas={clearHighlightCanvas}
-                onSetTag={(id, tag) => setTag(id, tag as TagType | null)}
-                onSaveHandwriting={saveHandwriting}
-                onClearHandwriting={clearHandwriting}
-              />
-            ) : (
-              <div className="flex items-center justify-center h-full min-h-[50vh] text-slate-500 text-sm">
-                載入逐字稿中…
-              </div>
-            )}
+          <div ref={transcriptScrollRef} className="absolute inset-0 overflow-y-auto px-4 py-4 transcript-scroll">
+            <div className="max-w-4xl mx-auto pb-48">
+              {mode === 'read' ? (
+                <TranscriptView
+                  segments={session?.segments || []}
+                  activeId={activeId}
+                  metas={metas}
+                  onSeek={handleSeek}
+                  onSaveHighlightCanvas={saveHighlightCanvas}
+                  onClearHighlightCanvas={clearHighlightCanvas}
+                  onSetTag={(id, tag) => setTag(id, tag as TagType | null)}
+                  onSaveHandwriting={saveHandwriting}
+                  onClearHandwriting={clearHandwriting}
+                  activeTool={activeTool}
+                  brushSize={brushSize}
+                  brushColor={activeTool === 'highlighter' ? highlighterColor : brushColor}
+                  scrollContainerRef={transcriptScrollRef}
+                />
+              ) : (
+                <ReplayMode
+                  segments={session?.segments ?? []}
+                  metas={metas}
+                  onSeek={handleSeek}
+                  onClose={() => setMode('read')}
+                  activeTool={activeTool}
+                  brushSize={brushSize}
+                  brushColor={activeTool === 'highlighter' ? highlighterColor : brushColor}
+                />
+              )}
+            </div>
           </div>
+
+          <FloatingToolbar 
+            activeTool={activeTool}
+            setActiveTool={setActiveTool}
+            brushSize={brushSize}
+            setBrushSize={setBrushSize}
+            brushColor={brushColor}
+            setBrushColor={setBrushColor}
+            highlighterColor={highlighterColor}
+            setHighlighterColor={setHighlighterColor}
+            onUndo={() => window.dispatchEvent(new CustomEvent('annotation-undo'))}
+          />
         </div>
       </div>
 
+      <Sidebar 
+        isOpen={isSidebarOpen} 
+        onClose={() => setIsSidebarOpen(false)} 
+        onSelectSession={(id) => {
+          console.log('Load session', id)
+          setIsSidebarOpen(false)
+        }} 
+      />
       {/* ── Toasts ── */}
       <Toast items={toasts} onDismiss={dismissToast} />
     </div>

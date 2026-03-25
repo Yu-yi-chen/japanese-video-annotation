@@ -1,0 +1,139 @@
+{
+  "videoId": "demo",
+  "title": "日本語学習デモ — N3レベル会話",
+  "segments": [
+    {
+      "id": "demo_0",
+      "startTime": 2.0,
+      "endTime": 7.0,
+      "kanji": "<ruby>今日<rt>きょう</rt></ruby>は<ruby>天気<rt>てんき</rt></ruby>がいいですね。",
+      "translation": "今天天氣真好呢。"
+    },
+    {
+      "id": "demo_1",
+      "startTime": 7.5,
+      "endTime": 13.0,
+      "kanji": "そうですね。<ruby>散歩<rt>さんぽ</rt></ruby>でも<ruby>行<rt>い</rt></ruby>きませんか？",
+      "translation": "是呢。要不要去散個步？"
+    },
+    {
+      "id": "demo_2",
+      "startTime": 13.5,
+      "endTime": 20.0,
+      "kanji": "<ruby>実<rt>じつ</rt></ruby>は、<ruby>午後<rt>ごご</rt></ruby>から<ruby>会議<rt>かいぎ</rt></ruby>があるんです。",
+      "translation": "其實，下午開始有個會議。"
+    },
+    {
+      "id": "demo_3",
+      "startTime": 20.5,
+      "endTime": 27.0,
+      "kanji": "それは<ruby>残念<rt>ざんねん</rt></ruby>ですね。<ruby>明日<rt>あした</rt></ruby>はどうですか？",
+      "translation": "那真可惜呢。明天如何？"
+    },
+    {
+      "id": "demo_4",
+      "startTime": 27.5,
+      "endTime": 34.0,
+      "kanji": "<ruby>明日<rt>あした</rt></ruby>なら<ruby>大丈夫<rt>だいじょうぶ</rt></ruby>です。<ruby>何時<rt>なんじ</rt></ruby>がいいですか？",
+      "translation": "明天的話沒問題。幾點好呢？"
+    },
+    {
+      "id": "demo_5",
+      "startTime": 34.5,
+      "endTime": 41.0,
+      "kanji": "<ruby>午前<rt>ごぜん</rt></ruby><ruby>十時<rt>じゅうじ</rt></ruby>ごろはどうでしょうか？",
+      "translation": "上午十點左右如何呢？"
+    },
+    {
+      "id": "demo_6",
+      "startTime": 41.5,
+      "endTime": 48.0,
+      "kanji": "いいですよ。<ruby>公園<rt>こうえん</rt></ruby>の<ruby>前<rt>まえ</rt></ruby>で<ruby>待<rt>ま</rt></ruby>ち<ruby>合<rt>あ</rt></ruby>わせましょう。",
+      "translation": "好啊。我們在公園前集合吧。"
+    },
+    {
+      "id": "demo_7",
+      "startTime": 48.5,
+      "endTime": 55.0,
+      "kanji": "わかりました。それでは<ruby>明日<rt>あした</rt></ruby>、<ruby>楽<rt>たの</rt></ruby>しみにしています。",
+      "translation": "知道了。那就明天，我很期待。"
+    },
+    {
+      "id": "demo_8",
+      "startTime": 55.5,
+      "endTime": 62.0,
+      "kanji": "<ruby>私<rt>わたし</rt></ruby>も<ruby>楽<rt>たの</rt></ruby>しみです。では、また<ruby>明日<rt>あした</rt></ruby>！",
+      "translation": "我也很期待。那麼，明天見！"
+    },
+    {
+      "id": "demo_9",
+      "startTime": 62.5,
+      "endTime": 70.0,
+      "kanji": "<ruby>先生<rt>せんせい</rt></ruby>、<ruby>質問<rt>しつもん</rt></ruby>があります。<ruby>少<rt>すこ</rt></ruby>し<ruby>時間<rt>じかん</rt></ruby>がありますか？",
+      "translation": "老師，我有問題。您有一點時間嗎？"
+    },
+    {
+      "id": "demo_10",
+      "startTime": 70.5,
+      "endTime": 78.0,
+      "kanji": "もちろんです。どうぞ、<ruby>遠慮<rt>えんりょ</rt></ruby>なく<ruby>聞<rt>き</rt></ruby>いてください。",
+      "translation": "當然。請不要客氣，儘管問。"
+    },
+    {
+      "id": "demo_11",
+      "startTime": 78.5,
+      "endTime": 86.0,
+      "kanji": "この<ruby>漢字<rt>かんじ</rt></ruby>の<ruby>読<rt>よ</rt></ruby>み<ruby>方<rt>かた</rt></ruby>がわからないんですが…",
+      "translation": "這個漢字的念法我不知道…"
+    },
+    {
+      "id": "demo_12",
+      "startTime": 86.5,
+      "endTime": 94.0,
+      "kanji": "<ruby>拝啓<rt>はいけい</rt></ruby>ですね。<ruby>手紙<rt>てがみ</rt></ruby>の<ruby>書<rt>か</rt></ruby>き<ruby>出<rt>だ</rt></ruby>しに<ruby>使<rt>つか</rt></ruby>う<ruby>言葉<rt>ことば</rt></ruby>です。",
+      "translation": "是「拝啓」呢。是用在書信開頭的詞語。"
+    },
+    {
+      "id": "demo_13",
+      "startTime": 95.0,
+      "endTime": 103.0,
+      "kanji": "<ruby>勉強<rt>べんきょう</rt></ruby>になりました。<ruby>本当<rt>ほんとう</rt></ruby>にありがとうございました。",
+      "translation": "學到了新知識。真的非常感謝。"
+    },
+    {
+      "id": "demo_14",
+      "startTime": -1,
+      "endTime": -1,
+      "kanji": "（このセリフには<ruby>時刻<rt>じこく</rt></ruby>データがありません）",
+      "translation": "（此句無時間戳記錄，點擊不觸發跳轉）"
+    },
+    {
+      "id": "demo_15",
+      "startTime": 105.0,
+      "endTime": 113.0,
+      "kanji": "<ruby>日本語<rt>にほんご</rt></ruby>の<ruby>勉強<rt>べんきょう</rt></ruby>は<ruby>難<rt>むずか</rt></ruby>しいけど、<ruby>楽<rt>たの</rt></ruby>しいです。",
+      "translation": "日語學習很難，但很有趣。"
+    },
+    {
+      "id": "demo_16",
+      "startTime": 113.5,
+      "endTime": 121.0,
+      "kanji": "<ruby>毎日<rt>まいにち</rt></ruby><ruby>少<rt>すこ</rt></ruby>しずつ<ruby>練習<rt>れんしゅう</rt></ruby>すれば、きっと<ruby>上手<rt>じょうず</rt></ruby>になりますよ。",
+      "translation": "如果每天一點一點地練習，一定會變得更好的。"
+    },
+    {
+      "id": "demo_17",
+      "startTime": 122.0,
+      "endTime": 130.0,
+      "kanji": "<ruby>頑張<rt>がんば</rt></ruby>ります！<ruby>応援<rt>おうえん</rt></ruby>よろしくお<ruby>願<rt>ねが</rt></ruby>いします。",
+      "translation": "我會努力的！請多多支持！"
+    },
+    {
+      "id": "demo_18",
+      "startTime": 130.5,
+      "endTime": 138.0,
+      "kanji": "<ruby>一緒<rt>いっしょ</rt></ruby>に<ruby>頑張<rt>がんば</rt></ruby>りましょう！<ruby>応援<rt>おうえん</rt></ruby>しています。",
+      "translation": "讓我們一起努力吧！支持你。"
+    }
+  ]
+}

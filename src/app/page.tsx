@@ -117,6 +117,7 @@ function Toast({ items, onDismiss }: { items: ToastItem[]; onDismiss: (id: numbe
 /* ─────────────── Main Page ─────────────── */
 export default function Home() {
   const [videoId, setVideoId] = useState<string>('')
+  const [loadVideoId, setLoadVideoId] = useState<string | null>(null)
   const [session, setSession] = useState<VideoSession | null>(null)
   const [isPlayerReady, setIsPlayerReady] = useState(false)
   const [mounted, setMounted] = useState(false)
@@ -585,6 +586,7 @@ export default function Home() {
             <VideoPlayer
               onPlayerReady={handlePlayerReady}
               onVideoLoad={handleVideoLoad}
+              loadVideoId={loadVideoId}
             />
           </div>
 
@@ -823,7 +825,7 @@ export default function Home() {
         onClose={() => setIsSidebarOpen(false)}
         user={user}
         onSelectSession={(id) => {
-          handleVideoLoad(id)
+          setLoadVideoId(id)
           setIsSidebarOpen(false)
         }}
       />

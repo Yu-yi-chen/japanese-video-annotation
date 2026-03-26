@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { useYouTubePlayer } from '@/hooks/useYouTubePlayer'
 import { Link, AlertCircle, Loader2 } from 'lucide-react'
 import clsx from 'clsx'
@@ -12,6 +12,7 @@ interface VideoPlayerProps {
     getPlayerState: () => number
   }) => void
   onVideoLoad: (videoId: string, title?: string) => void
+  loadVideoId?: string | null
 }
 
 function parseVideoId(input: string): string | null {
@@ -29,12 +30,27 @@ function parseVideoId(input: string): string | null {
   return null
 }
 
-export default function VideoPlayer({ onPlayerReady, onVideoLoad }: VideoPlayerProps) {
+export default function VideoPlayer({ onPlayerReady, onVideoLoad, loadVideoId }: VideoPlayerProps) {
   const [url, setUrl] = useState('')
   const [videoId, setVideoId] = useState<string | null>(null)
   const [status, setStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle')
   const [errorMsg, setErrorMsg] = useState('')
   const controlsReadyRef = useRef(false)
+
+  // Programmatically load a video when selected from Sidebar
+  useEffect(() => {
+    if (!loadVideoId) return
+    controlsReadyRef.current = false
+    setStatus('loading')
+    setErrorMsg('')
+    setVideoId(loadVideoId)
+    setUrl(loadVideoId)
+    fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${loadVideoId}&format=json`)
+      .then(r => r.ok ? r.json() : null)
+      .then(data => onVideoLoad(loadVideoId, data?.title))
+      .catch(() => onVideoLoad(loadVideoId))
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadVideoId])
 
   const handleReady = useCallback(() => {
     if (controlsReadyRef.current) return

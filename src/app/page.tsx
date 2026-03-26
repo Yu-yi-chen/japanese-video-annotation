@@ -59,6 +59,7 @@ export default function Home() {
   
   /* ── Layout Resizer ── */
   const [leftWidth, setLeftWidth] = useState(45)
+  const [, setWindowWidth] = useState(0)
   const transcriptScrollRef = useRef<HTMLDivElement>(null)
 
   /* ── Annotation Tools ── */
@@ -72,6 +73,18 @@ export default function Home() {
 
   useEffect(() => {
     setMounted(true)
+    setWindowWidth(window.innerWidth)
+  }, [])
+
+  // M1: re-render on orientation change so flex-basis recalculates
+  useEffect(() => {
+    const handler = () => setWindowWidth(window.innerWidth)
+    window.addEventListener('resize', handler)
+    window.addEventListener('orientationchange', handler)
+    return () => {
+      window.removeEventListener('resize', handler)
+      window.removeEventListener('orientationchange', handler)
+    }
   }, [])
 
   // Cmd/Ctrl+Z global undo
@@ -195,7 +208,7 @@ export default function Home() {
     <div className="flex flex-col h-[100dvh] bg-[#0a0d14] overflow-hidden">
 
       {/* ── Header ── */}
-      <header className="h-16 shrink-0 bg-slate-900/50 backdrop-blur-md border-b border-slate-800 flex items-center justify-between px-4 sm:px-6 relative z-30">
+      <header className="h-16 shrink-0 bg-slate-900/50 backdrop-blur-md border-b border-slate-800 flex items-center justify-between px-4 sm:px-6 relative z-30" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
         <div className="flex items-center gap-3">
           <button 
             onClick={() => setIsSidebarOpen(true)}
@@ -317,8 +330,9 @@ export default function Home() {
         </div>
 
         {/* Resizer Handle (Visible on lg+ screens) */}
-        <div 
+        <div
           className="hidden lg:flex w-2 cursor-col-resize items-center justify-center shrink-0 bg-slate-900 border-x border-slate-800 hover:bg-indigo-500/20 active:bg-indigo-500/40 transition-colors z-20 group"
+          style={{ touchAction: 'none' }}
           onPointerDown={(e) => {
             e.preventDefault();
             const startX = e.clientX;

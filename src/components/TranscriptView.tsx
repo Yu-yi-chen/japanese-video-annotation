@@ -141,12 +141,14 @@ export default function TranscriptView({
               {/* Japanese text with Highlight Canvas Overlay */}
               <div
                 className={clsx(
-                  'relative flex-1 min-w-0', // Need relative for the absolute canvas overlay
-                  hasTimestamp
-                    ? 'cursor-pointer hover:text-indigo-300 transition-colors'
-                    : 'cursor-default text-slate-500'
+                  'relative flex-1 min-w-0',
+                  activeTool === 'pen'
+                    ? 'pointer-events-none'
+                    : hasTimestamp
+                      ? 'cursor-pointer hover:text-indigo-300 transition-colors'
+                      : 'cursor-default text-slate-500'
                 )}
-                onClick={() => hasTimestamp && onSeek(seg.startTime)}
+                onClick={() => activeTool !== 'pen' && hasTimestamp && onSeek(seg.startTime)}
               >
                 <div className="relative z-0">
                   <p
@@ -184,7 +186,10 @@ export default function TranscriptView({
               </div>
 
               {/* Annotation Controls */}
-              <div className="relative z-30 shrink-0 flex items-center gap-1.5">
+              <div className={clsx(
+                'relative z-30 shrink-0 flex items-center gap-1.5',
+                activeTool === 'pen' && 'pointer-events-none opacity-40'
+              )}>
 
 
                 {/* Tag picker */}
@@ -257,7 +262,7 @@ function TagPicker({
         {tags.map((tag) => (
           <button
             key={tag}
-            onPointerDown={(e) => e.stopPropagation()}
+            onPointerDown={(e) => { e.stopPropagation(); e.preventDefault() }}
             onClick={() => onSelect(currentTag === tag ? null : tag)}
             className={clsx(
               'flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-medium transition-all',

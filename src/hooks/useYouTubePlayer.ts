@@ -99,6 +99,7 @@ export function useYouTubePlayer({
       const div = document.createElement('div')
       containerRef.current.appendChild(div)
 
+      div.setAttribute('allow', 'autoplay; fullscreen; encrypted-media')
       playerRef.current = new window.YT.Player(div, {
         videoId,
         playerVars: {

@@ -15,9 +15,13 @@ interface HighlightOverlayProps {
   brushColor?: string
 }
 
-// Fixed dimensions relative to the text block for simplicity.
-// In a real app we might dynamicly match text bounds, but for iPad N3 readers a fixed 80px height covering 1-2 lines is ideal.
 const CANVAS_HEIGHT = 80
+
+/** WebP with PNG fallback for older iPads */
+function exportCanvas(canvas: HTMLCanvasElement, quality = 0.7): string {
+  const webp = canvas.toDataURL('image/webp', quality)
+  return webp.startsWith('data:image/webp') ? webp : canvas.toDataURL('image/png')
+}
 
 export default function HighlightOverlay({
   segmentId,
@@ -36,76 +40,107 @@ export default function HighlightOverlay({
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const historyRef = useRef<string[]>([initialData || ''])
 
-  // Restore from initial data
+  const getCssDims = () => {
+    const canvas = canvasRef.current!
+    const rect = canvas.getBoundingClientRect()
+    return { w: rect.width, h: CANVAS_HEIGHT }
+  }
+
+  // ── Initialize canvas at correct DPR size on mount / segment change ──
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const dpr = window.devicePixelRatio || 1
+    const rect = canvas.getBoundingClientRect()
+    if (rect.width === 0) return
+    canvas.width = Math.round(rect.width * dpr)
+    canvas.height = Math.round(CANVAS_HEIGHT * dpr)
+    const ctx = canvas.getContext('2d')
+    if (!ctx) return
+    ctx.scale(dpr, dpr)
+    if (initialData) {
+      const img = new Image()
+      img.onload = () => ctx.drawImage(img, 0, 0, rect.width, CANVAS_HEIGHT)
+      img.src = initialData
+      setIsEmpty(false)
+    }
+    historyRef.current = [initialData || '']
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [segmentId])
+
+  // ── Restore when initialData changes ──
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
     const ctx = canvas.getContext('2d')
     if (!ctx) return
-    ctx.clearRect(0, 0, canvas.width, canvas.height)
+    const { w, h } = getCssDims()
+    ctx.clearRect(0, 0, w, h)
     if (initialData) {
       const img = new Image()
-      img.onload = () => ctx.drawImage(img, 0, 0)
+      img.onload = () => ctx.drawImage(img, 0, 0, w, h)
       img.src = initialData
       setIsEmpty(false)
     } else {
       setIsEmpty(true)
     }
     historyRef.current = [initialData || '']
-  }, [initialData, segmentId])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialData])
 
-  // Global Undo Listener
+  // ── Global Undo ──
   useEffect(() => {
     const handleUndo = () => {
-      // Basic undo: if this canvas was just drawn on, pop the history
-      if (historyRef.current.length > 1) {
-        historyRef.current.pop() // remove latest
-        const previousState = historyRef.current[historyRef.current.length - 1]
-        
-        const canvas = canvasRef.current
-        if (!canvas) return
-        const ctx = canvas.getContext('2d')
-        if (!ctx) return
-        
-        ctx.clearRect(0, 0, canvas.width, canvas.height)
-        if (previousState) {
-          const img = new Image()
-          img.onload = () => ctx.drawImage(img, 0, 0)
-          img.src = previousState
-          onSave(previousState)
-        } else {
-          setIsEmpty(true)
-          onClear()
-        }
+      if (historyRef.current.length <= 1) return
+      historyRef.current.pop()
+      const prev = historyRef.current[historyRef.current.length - 1]
+      const canvas = canvasRef.current
+      if (!canvas) return
+      const ctx = canvas.getContext('2d')
+      if (!ctx) return
+      const { w, h } = getCssDims()
+      ctx.clearRect(0, 0, w, h)
+      if (prev) {
+        const img = new Image()
+        img.onload = () => ctx.drawImage(img, 0, 0, w, h)
+        img.src = prev
+        onSave(prev)
+      } else {
+        setIsEmpty(true)
+        onClear()
       }
     }
     window.addEventListener('annotation-undo', handleUndo)
     return () => window.removeEventListener('annotation-undo', handleUndo)
   }, [onSave, onClear])
 
-  // Resize observer
+  // ── ResizeObserver: snapshot → resize → restore (with null check) ──
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
+    const parent = canvas.parentElement
+    if (!parent) return
+    let skipFirst = true
     const ro = new ResizeObserver(() => {
       const dpr = window.devicePixelRatio || 1
       const rect = canvas.getBoundingClientRect()
-      
-      const tempCanvas = document.createElement('canvas')
-      tempCanvas.width = canvas.width
-      tempCanvas.height = canvas.height
-      tempCanvas.getContext('2d')?.drawImage(canvas, 0, 0)
-      
+      if (rect.width === 0) return
+      if (skipFirst) { skipFirst = false; return }
+      const snapshot = exportCanvas(canvas, 1)
+      const prevW = rect.width
+      const prevH = CANVAS_HEIGHT
       canvas.width = Math.round(rect.width * dpr)
-      canvas.height = Math.round(rect.height * dpr) // Match container height
-      
+      canvas.height = Math.round(CANVAS_HEIGHT * dpr)
       const ctx = canvas.getContext('2d')
-      if (ctx) {
-        ctx.scale(dpr, dpr)
-        ctx.drawImage(tempCanvas, 0, 0, rect.width, rect.height)
+      if (!ctx) return
+      ctx.scale(dpr, dpr)
+      if (snapshot && !snapshot.endsWith(',')) {
+        const img = new Image()
+        img.onload = () => ctx.drawImage(img, 0, 0, prevW, prevH)
+        img.src = snapshot
       }
     })
-    ro.observe(canvas.parentElement!) // Observe the container text area
+    ro.observe(parent)
     return () => ro.disconnect()
   }, [])
 
@@ -113,92 +148,83 @@ export default function HighlightOverlay({
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current)
     saveTimerRef.current = setTimeout(() => {
       const canvas = canvasRef.current
-      if (canvas) {
-        const base64 = canvas.toDataURL('image/webp', 0.7)
-        onSave(base64)
-      }
+      if (canvas) onSave(exportCanvas(canvas, 0.7))
     }, 400)
   }, [onSave])
 
   const getPoint = (e: React.PointerEvent<HTMLCanvasElement>) => {
-    const canvas = canvasRef.current!
-    const rect = canvas.getBoundingClientRect()
-    return {
-      x: e.clientX - rect.left,
-      y: e.clientY - rect.top,
-    }
+    const rect = canvasRef.current!.getBoundingClientRect()
+    return { x: e.clientX - rect.left, y: e.clientY - rect.top }
   }
 
   const onPointerDown = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
     if (e.pointerType === 'touch' || activeTool === 'pen') return
     e.preventDefault()
-    
     isDrawingRef.current = true
     const canvas = canvasRef.current!
     canvas.setPointerCapture(e.pointerId)
     const ctx = canvas.getContext('2d')!
-    
     const pt = getPoint(e)
     lastPointRef.current = pt
-
     const pressure = e.pressure > 0 ? e.pressure : 0.5
-    const lineWidth = brushSize * pressure
-
+    const lw = brushSize * pressure
     ctx.globalCompositeOperation = activeTool === 'eraser' ? 'destination-out' : 'source-over'
     ctx.beginPath()
-    ctx.arc(pt.x, pt.y, lineWidth / 2, 0, Math.PI * 2)
+    ctx.arc(pt.x, pt.y, lw / 2, 0, Math.PI * 2)
     ctx.fillStyle = activeTool === 'eraser' ? 'rgba(0,0,0,1)' : brushColor
     ctx.fill()
     setIsEmpty(false)
   }, [activeTool, brushSize, brushColor])
 
   const onPointerMove = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (e.pointerType !== 'pen' || !isDrawingRef.current || activeTool === 'pen') return
+    if (e.pointerType === 'touch' || !isDrawingRef.current || activeTool === 'pen') return
     e.preventDefault()
-    
     const canvas = canvasRef.current!
     const ctx = canvas.getContext('2d')!
     const pt = getPoint(e)
     const last = lastPointRef.current
-
     const pressure = e.pressure > 0 ? e.pressure : 0.5
-    const lineWidth = brushSize * pressure
-
+    const lw = brushSize * pressure
     ctx.globalCompositeOperation = activeTool === 'eraser' ? 'destination-out' : 'source-over'
     ctx.beginPath()
     if (last) ctx.moveTo(last.x, last.y)
     ctx.lineTo(pt.x, pt.y)
-    
     ctx.strokeStyle = activeTool === 'eraser' ? 'rgba(0,0,0,1)' : brushColor
-    ctx.lineWidth = lineWidth
+    ctx.lineWidth = lw
     ctx.lineCap = 'round'
     ctx.lineJoin = 'round'
     ctx.stroke()
-
     lastPointRef.current = pt
   }, [activeTool, brushSize, brushColor])
 
   const onPointerUp = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
     if (e.pointerType === 'touch' || activeTool === 'pen') return
+    if (!isDrawingRef.current) return
     isDrawingRef.current = false
     lastPointRef.current = null
-
-    // Save state to history array for undo
     const canvas = canvasRef.current
     if (canvas) {
-      historyRef.current.push(canvas.toDataURL('image/png'))
-      // Keep only last 20 strokes to save memory
-      if (historyRef.current.length > 20) historyRef.current.shift()
+      const snap = exportCanvas(canvas, 0.9)
+      historyRef.current.push(snap)
+      if (historyRef.current.length > 10) historyRef.current.shift()
     }
-
     scheduleSave()
   }, [activeTool, scheduleSave])
+
+  // Cancel: reset + release capture — do NOT save to history
+  const onPointerCancel = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
+    if (isDrawingRef.current) {
+      try { canvasRef.current?.releasePointerCapture(e.pointerId) } catch {}
+    }
+    isDrawingRef.current = false
+    lastPointRef.current = null
+  }, [])
 
   const handleClear = () => {
     const canvas = canvasRef.current
     if (!canvas) return
-    const ctx = canvas.getContext('2d')
-    ctx?.clearRect(0, 0, canvas.width, canvas.height)
+    const { w, h } = getCssDims()
+    canvas.getContext('2d')?.clearRect(0, 0, w, h)
     setIsEmpty(true)
     onClear()
   }
@@ -207,26 +233,21 @@ export default function HighlightOverlay({
     <>
       <canvas
         ref={canvasRef}
-        width={800}
-        height={CANVAS_HEIGHT}
-        style={{ touchAction: 'none' }}
-        className={clsx(
-          'absolute inset-0 w-full h-full z-10',
-          'cursor-crosshair'
-        )}
+        style={{ touchAction: 'none', display: 'block' }}
+        className={clsx('absolute inset-0 w-full h-full z-10', 'cursor-crosshair')}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
-        onPointerCancel={onPointerUp}
+        onPointerCancel={onPointerCancel}
       />
       {!isEmpty && isActive && (
         <button
-          onClick={(e) => { e.stopPropagation(); handleClear(); }}
+          onClick={(e) => { e.stopPropagation(); handleClear() }}
           className={clsx(
-            'absolute -top-3 -right-3 z-20 p-1 rounded-full',
+            'absolute -top-3 -right-3 z-20 p-2 rounded-full min-w-[44px] min-h-[44px] flex items-center justify-center',
             'bg-slate-800 border border-slate-600 text-slate-400',
             'hover:text-red-400 hover:border-red-700 hover:bg-red-950/80 shadow-md',
-            'transition-all'
+            'transition-colors'
           )}
           title="清除螢光筆"
         >

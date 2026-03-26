@@ -244,39 +244,57 @@ function TagPicker({
   currentTag: TagType | null
   onSelect: (tag: TagType | null) => void
 }) {
+  const [open, setOpen] = useState(false)
+  const ref = useRef<HTMLDivElement>(null)
   const tags: TagType[] = ['important', 'unknown', 'lookup']
+
+  // Close when clicking outside
+  useEffect(() => {
+    if (!open) return
+    const handler = (e: PointerEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) {
+        setOpen(false)
+      }
+    }
+    window.addEventListener('pointerdown', handler)
+    return () => window.removeEventListener('pointerdown', handler)
+  }, [open])
+
   return (
-    <div className="relative group">
+    <div ref={ref} className="relative">
       <button
+        onPointerDown={(e) => { e.stopPropagation(); e.preventDefault() }}
+        onClick={() => setOpen(v => !v)}
         className={clsx(
-          'p-1.5 rounded-lg transition-all',
-          currentTag
-            ? 'text-slate-300 hover:text-white'
+          'min-w-[44px] min-h-[44px] flex items-center justify-center rounded-lg transition-colors',
+          open || currentTag
+            ? 'text-slate-300'
             : 'text-slate-500 hover:text-slate-300 hover:bg-slate-700'
         )}
         title="標籤"
       >
         <Tag className="w-4 h-4" />
       </button>
-      <div className="absolute right-0 top-full mt-1 z-[200] hidden group-hover:flex flex-col gap-1 p-1.5 rounded-xl bg-slate-900 border border-slate-700 shadow-2xl min-w-[90px]">
-        {tags.map((tag) => (
-          <button
-            key={tag}
-            onPointerDown={(e) => { e.stopPropagation(); e.preventDefault() }}
-            onClick={() => onSelect(currentTag === tag ? null : tag)}
-            className={clsx(
-              'flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-medium transition-all',
-              TAG_CONFIG[tag].color,
-              'hover:opacity-100',
-              currentTag === tag ? 'opacity-100' : 'opacity-60'
-            )}
-          >
-            {TAG_CONFIG[tag].icon}
-            {TAG_CONFIG[tag].label}
-            {currentTag === tag && <X className="w-3 h-3 ml-auto" />}
-          </button>
-        ))}
-      </div>
+      {open && (
+        <div className="absolute right-0 top-full mt-1 z-[200] flex flex-col gap-1 p-1.5 rounded-xl bg-slate-900 border border-slate-700 shadow-2xl min-w-[90px]">
+          {tags.map((tag) => (
+            <button
+              key={tag}
+              onPointerDown={(e) => { e.stopPropagation(); e.preventDefault() }}
+              onClick={() => { onSelect(currentTag === tag ? null : tag); setOpen(false) }}
+              className={clsx(
+                'flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors',
+                TAG_CONFIG[tag].color,
+                currentTag === tag ? 'opacity-100' : 'opacity-60 hover:opacity-100'
+              )}
+            >
+              {TAG_CONFIG[tag].icon}
+              {TAG_CONFIG[tag].label}
+              {currentTag === tag && <X className="w-3 h-3 ml-auto" />}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

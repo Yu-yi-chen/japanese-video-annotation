@@ -27,7 +27,7 @@ import {
 } from 'lucide-react'
 import clsx from 'clsx'
 
-/* ─────────────── SRT Parser ─────────────── */
+/* ─────────────── Parsers ─────────────── */
 interface ParsedSegment { startTime: number; endTime: number; text: string }
 
 function parseSRT(content: string): ParsedSegment[] {
@@ -46,6 +46,44 @@ function parseSRT(content: string): ParsedSegment[] {
     if (text) out.push({ startTime: start, endTime: end, text })
   }
   return out
+}
+
+// Parse YouTube "Show transcript" copy-paste format:
+// "0:00\ntext\n0:05\ntext" or "0:00:01\ntext\n0:00:05\ntext"
+function parseYouTubeTranscript(content: string): ParsedSegment[] {
+  const toSec = (ts: string) => {
+    const parts = ts.trim().split(':').map(Number)
+    if (parts.length === 2) return parts[0] * 60 + parts[1]
+    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2]
+    return 0
+  }
+  const lines = content.trim().split('\n').map(l => l.trim()).filter(Boolean)
+  const tsRe = /^\d+:\d+(:\d+)?(\.\d+)?$/
+  const pairs: { time: number; text: string }[] = []
+  let i = 0
+  while (i < lines.length) {
+    if (tsRe.test(lines[i])) {
+      const time = toSec(lines[i])
+      const textLines: string[] = []
+      i++
+      while (i < lines.length && !tsRe.test(lines[i])) {
+        textLines.push(lines[i])
+        i++
+      }
+      const text = textLines.join(' ').trim()
+      if (text) pairs.push({ time, text })
+    } else { i++ }
+  }
+  return pairs.map((p, idx) => ({
+    startTime: p.time,
+    endTime: pairs[idx + 1]?.time ?? p.time + 5,
+    text: p.text,
+  }))
+}
+
+function parseAnyTranscript(content: string): ParsedSegment[] {
+  if (content.includes('-->')) return parseSRT(content)
+  return parseYouTubeTranscript(content)
 }
 
 /* ─────────────── Toast ─────────────── */
@@ -120,13 +158,12 @@ export default function Home() {
 
   /* ── Transcript Upload / Auto-fetch ── */
   const [isImporting, setIsImporting] = useState(false)
+  const [showPasteModal, setShowPasteModal] = useState(false)
+  const [pasteText, setPasteText] = useState('')
   const fileInputRef = useRef<HTMLInputElement>(null)
 
-  const handleTranscriptFile = async (file: File) => {
+  const importParsed = async (parsed: ParsedSegment[]) => {
     if (!session || !videoId) return
-    const text = await file.text()
-    const parsed = parseSRT(text)
-    if (parsed.length === 0) { addToast('無法解析 SRT，請確認格式正確', 'warn'); return }
     setIsImporting(true)
     const rows = parsed.map((s, i) => ({
       id: `${videoId}_${i}`,
@@ -142,6 +179,22 @@ export default function Home() {
     setSession(prev => prev ? { ...prev, segments } : prev)
     setIsImporting(false)
     addToast(`已匯入 ${segments.length} 句逐字稿`, 'info')
+  }
+
+  const handleTranscriptFile = async (file: File) => {
+    if (!session || !videoId) return
+    const text = await file.text()
+    const parsed = parseAnyTranscript(text)
+    if (parsed.length === 0) { addToast('無法解析，請確認格式正確', 'warn'); return }
+    await importParsed(parsed)
+  }
+
+  const handlePasteSubmit = async () => {
+    const parsed = parseAnyTranscript(pasteText)
+    if (parsed.length === 0) { addToast('無法解析，請確認格式正確', 'warn'); return }
+    setShowPasteModal(false)
+    setPasteText('')
+    await importParsed(parsed)
   }
 
   /* ── Title Edit ── */
@@ -649,16 +702,62 @@ export default function Home() {
                   </div>
                   <div>
                     <p className="text-slate-300 font-medium mb-1">尚無逐字稿</p>
-                    <p className="text-xs text-slate-500">上傳 SRT 字幕檔，即可開始標注學習</p>
+                    <p className="text-xs text-slate-500 max-w-xs">在 YouTube 影片下方點「…」→「顯示逐字稿」，全選複製後貼入</p>
                   </div>
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={isImporting}
-                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium transition-all disabled:opacity-50"
-                  >
-                    {isImporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                    {isImporting ? '匯入中…' : '上傳 SRT 字幕檔'}
-                  </button>
+                  <div className="flex flex-col sm:flex-row gap-2">
+                    <button
+                      onClick={() => setShowPasteModal(true)}
+                      disabled={isImporting}
+                      className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium transition-all disabled:opacity-50"
+                    >
+                      {isImporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileText className="w-4 h-4" />}
+                      {isImporting ? '匯入中…' : '貼上逐字稿'}
+                    </button>
+                    <button
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isImporting}
+                      className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-slate-700 hover:bg-slate-600 text-slate-300 text-sm font-medium transition-all disabled:opacity-50"
+                    >
+                      <Upload className="w-4 h-4" />
+                      上傳 SRT 檔
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Paste Modal */}
+              {showPasteModal && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm px-4">
+                  <div className="w-full max-w-lg bg-slate-900 border border-slate-700 rounded-2xl shadow-2xl p-5 flex flex-col gap-4">
+                    <div className="flex items-center justify-between">
+                      <h2 className="text-sm font-semibold text-white">貼上逐字稿</h2>
+                      <button onClick={() => setShowPasteModal(false)} className="text-slate-500 hover:text-white"><X className="w-4 h-4" /></button>
+                    </div>
+                    <div className="text-xs text-slate-400 bg-slate-800/60 rounded-xl p-3 leading-relaxed">
+                      <p className="font-medium text-slate-300 mb-1">如何取得 YouTube 逐字稿：</p>
+                      <p>1. 在 YouTube 影片下方點「⋯」→「顯示逐字稿」</p>
+                      <p>2. 點逐字稿面板右上角「⋮」→「切換時間戳記」</p>
+                      <p>3. 全選（Cmd+A）→ 複製（Cmd+C）→ 貼到下方</p>
+                    </div>
+                    <textarea
+                      value={pasteText}
+                      onChange={e => setPasteText(e.target.value)}
+                      placeholder="0:00&#10;こんにちは&#10;0:05&#10;今日は..."
+                      rows={8}
+                      className="w-full bg-slate-800 border border-slate-600 rounded-xl px-3 py-2.5 text-sm text-slate-100 placeholder-slate-600 focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-none font-mono"
+                    />
+                    <div className="flex gap-2 justify-end">
+                      <button onClick={() => setShowPasteModal(false)} className="px-4 py-2 rounded-xl text-sm text-slate-400 hover:text-white transition-colors">取消</button>
+                      <button
+                        onClick={handlePasteSubmit}
+                        disabled={!pasteText.trim() || isImporting}
+                        className="flex items-center gap-2 px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium transition-all disabled:opacity-50"
+                      >
+                        {isImporting ? <Loader2 className="w-4 h-4 animate-spin" /> : null}
+                        匯入
+                      </button>
+                    </div>
+                  </div>
                 </div>
               )}
 

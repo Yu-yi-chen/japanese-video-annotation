@@ -6,6 +6,7 @@ import {
   X, MoreVertical, Pencil, Trash2, FolderInput, Search
 } from 'lucide-react'
 import clsx from 'clsx'
+import { supabase } from '@/lib/supabase'
 
 /* ─── Types ─── */
 interface SavedSession {
@@ -27,53 +28,18 @@ type MenuTarget =
   | { kind: 'session'; folderId: string; sessionId: string }
   | null
 
-/* ─── Default data ─── */
-const DEFAULT_FOLDERS: FolderData[] = [
-  {
-    id: 'f1',
-    name: '日劇聽力特訓',
-    isExpanded: true,
-    sessions: [
-      { id: 's1', title: 'First Love 初戀 EP1 經典對白', date: '2023-11-01', duration: '12:45' },
-      { id: 's2', title: '半澤直樹 面試場景', date: '2023-10-15', duration: '08:20' },
-    ]
-  },
-  {
-    id: 'f2',
-    name: 'N2 檢定必考聽解',
-    isExpanded: false,
-    sessions: [
-      { id: 's3', title: '2022年7月 第四題單元', date: '2023-09-20', duration: '45:00' },
-    ]
-  }
-]
-
-const STORAGE_KEY = 'sidebar_folders_v1'
-
-function loadFolders(): FolderData[] {
-  if (typeof window === 'undefined') return DEFAULT_FOLDERS
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY)
-    if (raw) return JSON.parse(raw)
-  } catch {}
-  return DEFAULT_FOLDERS
-}
-
-function saveFolders(folders: FolderData[]) {
-  try { localStorage.setItem(STORAGE_KEY, JSON.stringify(folders)) } catch {}
-}
-
 /* ─── Props ─── */
 interface SidebarProps {
   isOpen: boolean
   onClose: () => void
   onSelectSession: (id: string) => void
+  user?: { id: string; email?: string; avatar?: string; name?: string } | null
 }
 
 /* ══════════════════════════════════════════════════════════ */
-export default function Sidebar({ isOpen, onClose, onSelectSession }: SidebarProps) {
-  const [folders, setFolders] = useState<FolderData[]>(DEFAULT_FOLDERS)
-  const [mounted, setMounted] = useState(false)
+export default function Sidebar({ isOpen, onClose, onSelectSession, user }: SidebarProps) {
+  const [folders, setFolders] = useState<FolderData[]>([])
+  const [unfiledSessions, setUnfiledSessions] = useState<SavedSession[]>([])
 
   // Search
   const [searchQuery, setSearchQuery] = useState('')
@@ -81,7 +47,7 @@ export default function Sidebar({ isOpen, onClose, onSelectSession }: SidebarPro
   // Menus & inline edit
   const [menuTarget, setMenuTarget] = useState<MenuTarget>(null)
   const [menuPos, setMenuPos] = useState({ x: 0, y: 0 })
-  const [editingId, setEditingId] = useState<string | null>(null)  // folderId or sessionId
+  const [editingId, setEditingId] = useState<string | null>(null)
   const [editingValue, setEditingValue] = useState('')
   const editInputRef = useRef<HTMLInputElement>(null)
 
@@ -91,16 +57,40 @@ export default function Sidebar({ isOpen, onClose, onSelectSession }: SidebarPro
   // Move modal
   const [moveTarget, setMoveTarget] = useState<{ folderId: string; sessionId: string } | null>(null)
 
-  // ── Load from localStorage on mount ──
+  // ── Load from Supabase on mount ──
   useEffect(() => {
-    setFolders(loadFolders())
-    setMounted(true)
-  }, [])
+    ;(async () => {
+      const { data: folderRows } = await supabase.from('folders').select('id, name, created_at').order('created_at')
+      const { data: fsRows } = await supabase.from('folder_sessions').select('folder_id, video_id, sessions(video_id, title, created_at)')
+      if (!folderRows) return
+      const built: FolderData[] = folderRows.map(f => {
+        const sessions: SavedSession[] = (fsRows ?? [])
+          .filter(fs => fs.folder_id === f.id)
+          .map(fs => {
+            const rows = fs.sessions as unknown as { video_id: string; title: string; created_at: string }[]
+            const s = Array.isArray(rows) ? rows[0] : (rows ?? null)
+            return {
+              id: s?.video_id ?? '',
+              title: s?.title ?? '',
+              date: s?.created_at ? s.created_at.slice(0, 10) : '',
+              duration: '',
+            }
+          })
+          .filter(s => s.id !== '')
+        return { id: f.id, name: f.name, isExpanded: true, sessions }
+      })
+      setFolders(built)
 
-  // ── Persist on change ──
-  useEffect(() => {
-    if (mounted) saveFolders(folders)
-  }, [folders, mounted])
+      // 未分類：所有 sessions 中不在任何 folder_sessions 的
+      const { data: allSessions } = await supabase.from('sessions').select('video_id, title, created_at').order('created_at', { ascending: false })
+      const filedIds = new Set<string>((fsRows ?? []).map(fs => fs.video_id as string))
+      setUnfiledSessions(
+        (allSessions ?? [])
+          .filter(s => !filedIds.has(s.video_id))
+          .map(s => ({ id: s.video_id, title: s.title, date: s.created_at.slice(0, 10), duration: '' }))
+      )
+    })()
+  }, [])
 
   // ── Focus edit input ──
   useEffect(() => {
@@ -116,8 +106,7 @@ export default function Sidebar({ isOpen, onClose, onSelectSession }: SidebarPro
   }, [menuTarget])
 
   /* ── Helpers ── */
-  const update = (fn: (prev: FolderData[]) => FolderData[]) =>
-    setFolders(fn)
+  const update = (fn: (prev: FolderData[]) => FolderData[]) => setFolders(fn)
 
   const toggleFolder = (id: string) =>
     update(prev => prev.map(f => f.id === id ? { ...f, isExpanded: !f.isExpanded } : f))
@@ -131,33 +120,44 @@ export default function Sidebar({ isOpen, onClose, onSelectSession }: SidebarPro
   }
 
   /* ── Create folder ── */
-  const handleCreateFolder = () => {
+  const handleCreateFolder = async () => {
     const id = `f_${Date.now()}`
+    await supabase.from('folders').insert({ id, name: '新資料夾' })
     update(prev => [{ id, name: '新資料夾', isExpanded: true, sessions: [] }, ...prev])
     setEditingId(id)
     setEditingValue('新資料夾')
   }
 
   /* ── Rename commit ── */
-  const commitRename = () => {
+  const commitRename = async () => {
     const val = editingValue.trim()
     if (!val || !editingId) { setEditingId(null); return }
-    update(prev => prev.map(f => {
-      if (f.id === editingId) return { ...f, name: val }
-      return {
+    // Check if it's a folder id or session id
+    const isFolder = folders.some(f => f.id === editingId)
+    if (isFolder) {
+      await supabase.from('folders').update({ name: val }).eq('id', editingId)
+      update(prev => prev.map(f => f.id === editingId ? { ...f, name: val } : f))
+    } else {
+      await supabase.from('sessions').update({ title: val }).eq('video_id', editingId)
+      update(prev => prev.map(f => ({
         ...f,
         sessions: f.sessions.map(s => s.id === editingId ? { ...s, title: val } : s)
-      }
-    }))
+      })))
+    }
     setEditingId(null)
   }
 
   /* ── Delete ── */
-  const confirmDelete = () => {
+  const confirmDelete = async () => {
     if (!deleteTarget) return
     if (deleteTarget.kind === 'folder') {
+      await supabase.from('folders').delete().eq('id', deleteTarget.folderId)
       update(prev => prev.filter(f => f.id !== deleteTarget.folderId))
     } else {
+      await supabase.from('folder_sessions')
+        .delete()
+        .eq('folder_id', deleteTarget.folderId)
+        .eq('video_id', deleteTarget.sessionId)
       update(prev => prev.map(f =>
         f.id === deleteTarget.folderId
           ? { ...f, sessions: f.sessions.filter(s => s.id !== deleteTarget.sessionId) }
@@ -168,10 +168,12 @@ export default function Sidebar({ isOpen, onClose, onSelectSession }: SidebarPro
   }
 
   /* ── Move session ── */
-  const moveSession = (targetFolderId: string) => {
+  const moveSession = async (targetFolderId: string) => {
     if (!moveTarget) return
     const { folderId: srcId, sessionId } = moveTarget
     if (srcId === targetFolderId) { setMoveTarget(null); return }
+    await supabase.from('folder_sessions').delete().eq('folder_id', srcId).eq('video_id', sessionId)
+    await supabase.from('folder_sessions').upsert({ folder_id: targetFolderId, video_id: sessionId })
     update(prev => {
       let session: SavedSession | null = null
       const next = prev.map(f => {
@@ -256,8 +258,36 @@ export default function Sidebar({ isOpen, onClose, onSelectSession }: SidebarPro
 
         {/* Folder List */}
         <div className="flex-1 overflow-y-auto px-2 pb-6 flex flex-col gap-1 custom-scrollbar">
-          {filteredFolders.length === 0 && (
+          {filteredFolders.length === 0 && unfiledSessions.length === 0 && (
             <div className="text-center py-10 text-xs text-slate-600">找不到相關記錄</div>
+          )}
+
+          {/* 未分類 */}
+          {unfiledSessions.filter(s => !searchQuery || s.title.toLowerCase().includes(searchQuery.toLowerCase())).length > 0 && (
+            <div className="flex flex-col mb-1">
+              <div className="flex items-center gap-2 px-2 py-1.5 text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                未分類
+              </div>
+              <div className="flex flex-col gap-0.5 ml-2 pl-3 border-l border-slate-800">
+                {unfiledSessions
+                  .filter(s => !searchQuery || s.title.toLowerCase().includes(searchQuery.toLowerCase()))
+                  .map(s => (
+                    <div
+                      key={s.id}
+                      onClick={() => onSelectSession(s.id)}
+                      className="flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-slate-800/80 cursor-pointer group transition-colors"
+                    >
+                      <FileAudio className="w-3.5 h-3.5 text-emerald-400/70 shrink-0 group-hover:text-emerald-400" />
+                      <div className="flex-1 min-w-0">
+                        <span className="text-xs font-medium text-slate-300 group-hover:text-white truncate block">
+                          {s.title}
+                        </span>
+                        <span className="text-[10px] text-slate-500">{s.date}</span>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            </div>
           )}
           {filteredFolders.map(folder => (
             <div key={folder.id} className="flex flex-col">
@@ -350,12 +380,15 @@ export default function Sidebar({ isOpen, onClose, onSelectSession }: SidebarPro
 
         {/* Footer */}
         <div className="h-16 shrink-0 border-t border-slate-800 flex items-center px-4 gap-3 bg-slate-900/50">
-          <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center shrink-0 shadow-lg shadow-indigo-500/20">
-            <span className="text-xs font-bold text-white tracking-widest">JP</span>
-          </div>
+          {user?.avatar
+            ? <img src={user.avatar} className="w-8 h-8 rounded-full shrink-0" alt="" />
+            : <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center shrink-0 shadow-lg shadow-indigo-500/20">
+                <span className="text-xs font-bold text-white">{user ? (user.name ?? user.email ?? '?')[0].toUpperCase() : '?'}</span>
+              </div>
+          }
           <div className="flex-1 min-w-0 flex flex-col">
-            <span className="text-sm font-medium text-slate-200 truncate">測試帳號</span>
-            <span className="text-xs text-slate-500 truncate">本地開發模式</span>
+            <span className="text-sm font-medium text-slate-200 truncate">{user?.name ?? user?.email ?? '未登入'}</span>
+            <span className="text-xs text-slate-500 truncate">{user ? user.email : '請登入以同步資料'}</span>
           </div>
         </div>
       </div>

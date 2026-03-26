@@ -11,7 +11,7 @@ interface VideoPlayerProps {
     getCurrentTime: () => number
     getPlayerState: () => number
   }) => void
-  onVideoLoad: (videoId: string) => void
+  onVideoLoad: (videoId: string, title?: string) => void
 }
 
 function parseVideoId(input: string): string | null {
@@ -62,7 +62,7 @@ export default function VideoPlayer({ onPlayerReady, onVideoLoad }: VideoPlayerP
     onError: handleError,
   })
 
-  const handleLoad = () => {
+  const handleLoad = async () => {
     const id = parseVideoId(url.trim())
     if (!id) {
       setErrorMsg('無法解析 YouTube 連結，請貼入完整 URL 或 11 位影片 ID。')
@@ -73,7 +73,16 @@ export default function VideoPlayer({ onPlayerReady, onVideoLoad }: VideoPlayerP
     setStatus('loading')
     setErrorMsg('')
     setVideoId(id)
-    onVideoLoad(id)
+    // Fetch title from YouTube oEmbed (no API key needed)
+    let title: string | undefined
+    try {
+      const res = await fetch(`https://www.youtube.com/oembed?url=https://www.youtube.com/watch?v=${id}&format=json`)
+      if (res.ok) {
+        const data = await res.json()
+        title = data.title
+      }
+    } catch {}
+    onVideoLoad(id, title)
   }
 
   return (

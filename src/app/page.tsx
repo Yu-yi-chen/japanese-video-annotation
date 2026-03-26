@@ -9,7 +9,7 @@ import Sidebar from '@/components/Sidebar'
 import { useAnnotations } from '@/hooks/useAnnotations'
 import { useSyncEngine } from '@/hooks/useSyncEngine'
 import { TagType, VideoSession } from '@/types'
-import demoData from '@/data/demo.json'
+import { supabase } from '@/lib/supabase'
 import {
   Trash2,
   Play,
@@ -20,8 +20,32 @@ import {
   Loader2,
   Download,
   Pencil,
+  FolderOpen,
+  Upload,
+  FileText,
 } from 'lucide-react'
 import clsx from 'clsx'
+
+/* ─────────────── SRT Parser ─────────────── */
+interface ParsedSegment { startTime: number; endTime: number; text: string }
+
+function parseSRT(content: string): ParsedSegment[] {
+  const toSec = (ts: string) => {
+    const [h, m, rest] = ts.trim().replace(',', '.').split(':')
+    return Number(h) * 3600 + Number(m) * 60 + Number(rest)
+  }
+  const blocks = content.trim().split(/\n\s*\n/)
+  const out: ParsedSegment[] = []
+  for (const block of blocks) {
+    const lines = block.trim().split('\n')
+    const timeLine = lines.find(l => l.includes('-->'))
+    if (!timeLine) continue
+    const [start, end] = timeLine.split('-->').map(toSec)
+    const text = lines.filter(l => !l.includes('-->') && !/^\d+$/.test(l.trim())).join(' ').trim()
+    if (text) out.push({ startTime: start, endTime: end, text })
+  }
+  return out
+}
 
 /* ─────────────── Toast ─────────────── */
 interface ToastItem { id: number; msg: string; type: 'warn' | 'info' }
@@ -57,6 +81,27 @@ export default function Home() {
   const [session, setSession] = useState<VideoSession | null>(null)
   const [isPlayerReady, setIsPlayerReady] = useState(false)
   const [mounted, setMounted] = useState(false)
+
+  /* ── Auth ── */
+  const [user, setUser] = useState<{ id: string; email?: string; avatar?: string; name?: string } | null>(null)
+
+  useEffect(() => {
+    supabase.auth.getSession().then(({ data }) => {
+      const u = data.session?.user
+      if (u) setUser({ id: u.id, email: u.email, avatar: u.user_metadata?.avatar_url, name: u.user_metadata?.full_name })
+    })
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
+      const u = session?.user
+      setUser(u ? { id: u.id, email: u.email, avatar: u.user_metadata?.avatar_url, name: u.user_metadata?.full_name } : null)
+    })
+    return () => subscription.unsubscribe()
+  }, [])
+
+  const signInWithGoogle = () => supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: { redirectTo: window.location.origin },
+  })
+  const signOut = () => supabase.auth.signOut()
   
   /* ── Layout Resizer ── */
   const [leftWidth, setLeftWidth] = useState(45)
@@ -72,10 +117,71 @@ export default function Home() {
   /* ── Sidebar State ── */
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
 
+  /* ── Transcript Upload ── */
+  const [isImporting, setIsImporting] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
+  const handleTranscriptFile = async (file: File) => {
+    if (!session || !videoId) return
+    const text = await file.text()
+    const parsed = parseSRT(text)
+    if (parsed.length === 0) { addToast('無法解析 SRT，請確認格式正確', 'warn'); return }
+    setIsImporting(true)
+    const rows = parsed.map((s, i) => ({
+      id: `${videoId}_${i}`,
+      video_id: videoId,
+      index: i,
+      start_time: s.startTime,
+      end_time: s.endTime,
+      kanji: s.text,
+      translation: null,
+    }))
+    await supabase.from('segments').upsert(rows)
+    const segments = rows.map(r => ({ id: r.id, startTime: r.start_time, endTime: r.end_time, kanji: r.kanji }))
+    setSession(prev => prev ? { ...prev, segments } : prev)
+    setIsImporting(false)
+    addToast(`已匯入 ${segments.length} 句逐字稿`, 'info')
+  }
+
   /* ── Title Edit ── */
   const [isEditingTitle, setIsEditingTitle] = useState(false)
   const [titleDraft, setTitleDraft] = useState('')
   const titleInputRef = useRef<HTMLInputElement>(null)
+
+  /* ── Folder Picker ── */
+  const [showFolderPicker, setShowFolderPicker] = useState(false)
+  const [folderPickerList, setFolderPickerList] = useState<{ id: string; name: string }[]>([])
+  const [sessionFolderIds, setSessionFolderIds] = useState<Set<string>>(new Set())
+  const folderPickerRef = useRef<HTMLDivElement>(null)
+
+  const openFolderPicker = async () => {
+    const { data: folders } = await supabase.from('folders').select('id, name').order('created_at')
+    const { data: fs } = await supabase.from('folder_sessions').select('folder_id').eq('video_id', videoId || 'demo')
+    setFolderPickerList(folders ?? [])
+    setSessionFolderIds(new Set<string>((fs ?? []).map(r => r.folder_id as string)))
+    setShowFolderPicker(true)
+  }
+
+  const toggleFolder = async (folderId: string) => {
+    const vid = videoId || 'demo'
+    if (sessionFolderIds.has(folderId)) {
+      await supabase.from('folder_sessions').delete().eq('folder_id', folderId).eq('video_id', vid)
+      setSessionFolderIds(prev => { const s = new Set<string>(Array.from(prev)); s.delete(folderId); return s })
+    } else {
+      await supabase.from('folder_sessions').upsert({ folder_id: folderId, video_id: vid })
+      setSessionFolderIds(prev => new Set<string>([...Array.from(prev), folderId]))
+    }
+  }
+
+  useEffect(() => {
+    if (!showFolderPicker) return
+    const handler = (e: PointerEvent) => {
+      if (folderPickerRef.current && !folderPickerRef.current.contains(e.target as Node))
+        setShowFolderPicker(false)
+    }
+    window.addEventListener('pointerdown', handler)
+    return () => window.removeEventListener('pointerdown', handler)
+  }, [showFolderPicker])
 
   const startEditTitle = () => {
     setTitleDraft(session?.title ?? '')
@@ -83,10 +189,11 @@ export default function Home() {
     setTimeout(() => titleInputRef.current?.select(), 0)
   }
 
-  const commitTitle = () => {
+  const commitTitle = async () => {
     const trimmed = titleDraft.trim()
     if (trimmed && session) {
       setSession(prev => prev ? { ...prev, title: trimmed } : prev)
+      await supabase.from('sessions').update({ title: trimmed }).eq('video_id', session.videoId)
     }
     setIsEditingTitle(false)
   }
@@ -154,16 +261,55 @@ export default function Home() {
     isReady: isPlayerReady,
   })
 
+  /* ── Load session from Supabase ── */
+  const loadSession = useCallback(async (id: string) => {
+    const { data: sessionRow } = await supabase
+      .from('sessions')
+      .select('video_id, title')
+      .eq('video_id', id)
+      .single()
+    const { data: segmentRows } = await supabase
+      .from('segments')
+      .select('id, start_time, end_time, kanji, translation')
+      .eq('video_id', id)
+      .order('index')
+    if (!sessionRow || !segmentRows) return null
+    return {
+      videoId: sessionRow.video_id,
+      title: sessionRow.title,
+      segments: segmentRows.map((r) => ({
+        id: r.id,
+        startTime: r.start_time,
+        endTime: r.end_time,
+        kanji: r.kanji,
+        translation: r.translation ?? undefined,
+      })),
+    } as VideoSession
+  }, [])
+
   /* ── Video Load ── */
-  const handleVideoLoad = useCallback((id: string) => {
+  const handleVideoLoad = useCallback(async (id: string, fetchedTitle?: string) => {
     setVideoId(id)
     setIsPlayerReady(false)
     setMode('read')
-    // Use demo transcript for now (Day 2: swap for /api/transcript)
-    const demo = demoData as VideoSession
-    setSession({ ...demo, videoId: id })
+    setShowFolderPicker(false)
+    const s = await loadSession(id)
+    if (s) {
+      // If we got a fresh title from oEmbed, update it
+      if (fetchedTitle && fetchedTitle !== s.title) {
+        await supabase.from('sessions').update({ title: fetchedTitle }).eq('video_id', id)
+        setSession({ ...s, title: fetchedTitle })
+      } else {
+        setSession(s)
+      }
+    } else {
+      // New video — auto-create session record with real title
+      const title = fetchedTitle ?? id
+      await supabase.from('sessions').upsert({ video_id: id, title })
+      setSession({ videoId: id, title, segments: [] })
+    }
     reloadForVideo(id)
-  }, [reloadForVideo])
+  }, [reloadForVideo, loadSession])
 
   /* ── Player ready ── */
   const handlePlayerReady = useCallback((controls: typeof playerControlsRef.current) => {
@@ -178,9 +324,8 @@ export default function Home() {
 
   /* ── Load demo session on mount ── */
   useEffect(() => {
-    const demo = demoData as VideoSession
-    setSession(demo)
-  }, [])
+    loadSession('demo').then((s) => { if (s) setSession(s) })
+  }, [loadSession])
 
   const handleExport = () => {
     if (!session) return
@@ -245,6 +390,30 @@ export default function Home() {
         </div>
 
         <div className="flex items-center gap-2">
+          {/* Auth */}
+          {mounted && (
+            user ? (
+              <button
+                onClick={signOut}
+                className="flex items-center gap-1.5 px-2 py-1 rounded-xl hover:bg-slate-800 transition-colors"
+                title="登出"
+              >
+                {user.avatar
+                  ? <img src={user.avatar} className="w-6 h-6 rounded-full" alt="" />
+                  : <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center text-[10px] font-bold text-white">{(user.name ?? user.email ?? '?')[0].toUpperCase()}</div>
+                }
+                <span className="text-xs text-slate-400 max-w-[80px] truncate hidden sm:block">{user.name ?? user.email}</span>
+              </button>
+            ) : (
+              <button
+                onClick={signInWithGoogle}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-slate-800 border border-slate-700 text-slate-300 hover:bg-slate-700 transition-all"
+              >
+                <svg className="w-3.5 h-3.5" viewBox="0 0 24 24"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/><path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/></svg>
+                Google 登入
+              </button>
+            )
+          )}
           {/* Save status indicator */}
           {saveStatus !== 'idle' && (
             <div className={clsx(
@@ -362,6 +531,36 @@ export default function Home() {
                   <Pencil className="w-3 h-3 text-slate-600 group-hover:text-slate-400 shrink-0 transition-colors" />
                 </button>
               )}
+              {/* Folder picker */}
+              <div ref={folderPickerRef} className="relative shrink-0">
+                <button
+                  onClick={openFolderPicker}
+                  className="p-1.5 rounded-lg text-slate-500 hover:text-indigo-400 hover:bg-indigo-950/30 transition-all"
+                  title="加入資料夾"
+                >
+                  <FolderOpen className="w-3.5 h-3.5" />
+                </button>
+                {showFolderPicker && (
+                  <div className="absolute right-0 top-full mt-1 z-50 min-w-[180px] rounded-xl bg-slate-900 border border-slate-700 shadow-2xl py-1">
+                    {folderPickerList.length === 0 ? (
+                      <p className="px-3 py-2 text-xs text-slate-500">尚無資料夾，請先在側邊欄新增</p>
+                    ) : (
+                      folderPickerList.map(f => (
+                        <button
+                          key={f.id}
+                          onClick={() => toggleFolder(f.id)}
+                          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-slate-300 hover:bg-slate-800 transition-colors text-left"
+                        >
+                          <span className={`w-3.5 h-3.5 rounded-sm border flex items-center justify-center shrink-0 ${sessionFolderIds.has(f.id) ? 'bg-indigo-500 border-indigo-500' : 'border-slate-600'}`}>
+                            {sessionFolderIds.has(f.id) && <Check className="w-2.5 h-2.5 text-white" />}
+                          </span>
+                          {f.name}
+                        </button>
+                      ))
+                    )}
+                  </div>
+                )}
+              </div>
               <span className="text-xs text-slate-500 font-medium px-2 py-1 rounded-md bg-slate-800/50 shrink-0">
                 {session.segments.length} 句
               </span>
@@ -402,6 +601,36 @@ export default function Home() {
         <div className="flex-1 flex flex-col min-w-0 bg-[#0a0d14] relative">
           <div ref={transcriptScrollRef} className="absolute inset-0 overflow-y-auto px-4 py-4 transcript-scroll">
             <div className="max-w-4xl mx-auto pb-48">
+              {/* Hidden file input */}
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".srt,.txt"
+                className="hidden"
+                onChange={e => { const f = e.target.files?.[0]; if (f) handleTranscriptFile(f); e.target.value = '' }}
+              />
+
+              {/* Empty transcript placeholder */}
+              {session && session.segments.length === 0 && mode === 'read' && (
+                <div className="flex flex-col items-center justify-center min-h-[60vh] gap-4 text-center px-6">
+                  <div className="w-16 h-16 rounded-2xl bg-slate-800/60 flex items-center justify-center">
+                    <FileText className="w-8 h-8 text-slate-500" />
+                  </div>
+                  <div>
+                    <p className="text-slate-300 font-medium mb-1">尚無逐字稿</p>
+                    <p className="text-xs text-slate-500">上傳 SRT 字幕檔，即可開始標注學習</p>
+                  </div>
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    disabled={isImporting}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium transition-all disabled:opacity-50"
+                  >
+                    {isImporting ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                    {isImporting ? '匯入中…' : '上傳 SRT 字幕檔'}
+                  </button>
+                </div>
+              )}
+
               {mode === 'read' ? (
                 <TranscriptView
                   segments={session?.segments || []}
@@ -446,13 +675,14 @@ export default function Home() {
         </div>
       </div>
 
-      <Sidebar 
-        isOpen={isSidebarOpen} 
-        onClose={() => setIsSidebarOpen(false)} 
+      <Sidebar
+        isOpen={isSidebarOpen}
+        onClose={() => setIsSidebarOpen(false)}
+        user={user}
         onSelectSession={(id) => {
-          console.log('Load session', id)
+          handleVideoLoad(id)
           setIsSidebarOpen(false)
-        }} 
+        }}
       />
       {/* ── Toasts ── */}
       <Toast items={toasts} onDismiss={dismissToast} />

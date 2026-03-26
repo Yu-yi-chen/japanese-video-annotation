@@ -2,48 +2,83 @@ import { NextRequest, NextResponse } from 'next/server'
 
 export const runtime = 'edge'
 
-const INNERTUBE_URL = 'https://www.youtube.com/youtubei/v1/player?prettyPrint=false'
-const CLIENT_VERSION = '20.10.38'
-const ANDROID_UA = `com.google.android.youtube/${CLIENT_VERSION} (Linux; U; Android 14)`
+const INNERTUBE_KEY = 'AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8'
 
-// Try fetching via web page scraping (browser-like)
-async function fetchViaWebPage(videoId: string) {
-  const res = await fetch(`https://www.youtube.com/watch?v=${videoId}`, {
-    headers: {
-      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-      'Accept-Language': 'ja,en;q=0.9',
-    },
-  })
-  if (!res.ok) return null
-  const html = await res.text()
-  // Extract caption tracks from ytInitialPlayerResponse
-  const match = html.match(/"captionTracks":(\[.*?\])/)
-  if (!match) return null
-  try {
-    const tracks = JSON.parse(match[1])
-    return Array.isArray(tracks) && tracks.length > 0 ? tracks : null
-  } catch {
-    return null
-  }
+// Encode video ID as protobuf for get_transcript params
+function encodeTranscriptParams(videoId: string): string {
+  const videoIdBytes = new TextEncoder().encode(videoId)
+  const proto = new Uint8Array(2 + videoIdBytes.length)
+  proto[0] = 0x0a
+  proto[1] = videoIdBytes.length
+  proto.set(videoIdBytes, 2)
+  return btoa(Array.from(proto).map(b => String.fromCharCode(b)).join(''))
 }
 
-// Try InnerTube Android API
+// Method 1: YouTube's own "Show transcript" API (get_transcript)
+async function fetchViaGetTranscript(videoId: string) {
+  const params = encodeTranscriptParams(videoId)
+  const res = await fetch(`https://www.youtube.com/youtubei/v1/get_transcript?key=${INNERTUBE_KEY}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      context: { client: { clientName: 'WEB', clientVersion: '2.20240101.00.00', hl: 'en' } },
+      params,
+    }),
+  })
+  if (!res.ok) return null
+  const json = await res.json()
+  // Navigate the response structure
+  const actions = json?.actions?.[0]?.updateEngagementPanelAction?.content
+    ?.transcriptRenderer?.content?.transcriptSearchPanelRenderer
+    ?.body?.transcriptSegmentListRenderer?.initialSegments
+  if (!Array.isArray(actions)) return null
+  return actions
+    .map((a: { transcriptSegmentRenderer?: { snippet?: { runs?: { text: string }[] }; startMs?: string; endMs?: string } }) => {
+      const seg = a?.transcriptSegmentRenderer
+      if (!seg) return null
+      const text = seg.snippet?.runs?.map((r: { text: string }) => r.text).join('') ?? ''
+      const startMs = parseInt(seg.startMs ?? '0', 10)
+      const endMs = parseInt(seg.endMs ?? '0', 10)
+      return { text, startTime: startMs / 1000, endTime: endMs / 1000 }
+    })
+    .filter((s): s is { text: string; startTime: number; endTime: number } => !!s?.text)
+}
+
+// Method 2: InnerTube Android API → signed timedtext URL
+const ANDROID_UA = `com.google.android.youtube/20.10.38 (Linux; U; Android 14; Pixel 8 Pro Build/AP2A.240805.005)`
+
 async function fetchViaInnerTube(videoId: string) {
-  const res = await fetch(INNERTUBE_URL, {
+  const res = await fetch('https://www.youtube.com/youtubei/v1/player?prettyPrint=false', {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       'User-Agent': ANDROID_UA,
+      'X-YouTube-Client-Name': '3',
+      'X-YouTube-Client-Version': '20.10.38',
+      'Origin': 'https://www.youtube.com',
+      'Referer': 'https://www.youtube.com/',
     },
     body: JSON.stringify({
-      context: { client: { clientName: 'ANDROID', clientVersion: CLIENT_VERSION } },
+      context: { client: {
+        clientName: 'ANDROID',
+        clientVersion: '20.10.38',
+        androidSdkVersion: 34,
+        userAgent: ANDROID_UA,
+        osName: 'Android',
+        osVersion: '14',
+      }},
       videoId,
     }),
   })
   if (!res.ok) return null
   const json = await res.json()
   const tracks = json?.captions?.playerCaptionsTracklistRenderer?.captionTracks
-  return Array.isArray(tracks) && tracks.length > 0 ? tracks : null
+  if (!Array.isArray(tracks) || !tracks.length) return null
+  const track: { languageCode: string; baseUrl: string } =
+    tracks.find((t: { languageCode: string }) => t.languageCode === 'ja') ?? tracks[0]
+  const xmlRes = await fetch(track.baseUrl, { headers: { 'User-Agent': 'Mozilla/5.0' } })
+  if (!xmlRes.ok) return null
+  return parseXml(await xmlRes.text())
 }
 
 function decodeEntities(s: string) {
@@ -55,8 +90,7 @@ function decodeEntities(s: string) {
 }
 
 function parseXml(xml: string) {
-  const segments: { text: string; offset: number; duration: number }[] = []
-  // New format <p t="..." d="...">
+  const segments: { text: string; startTime: number; endTime: number }[] = []
   const pRe = /<p\s+t="(\d+)"\s+d="(\d+)"[^>]*>([\s\S]*?)<\/p>/g
   let m
   while ((m = pRe.exec(xml)) !== null) {
@@ -69,16 +103,15 @@ function parseXml(xml: string) {
     while ((s = sRe.exec(inner)) !== null) text += s[1]
     if (!text) text = inner.replace(/<[^>]+>/g, '')
     text = decodeEntities(text.trim())
-    if (text) segments.push({ text, offset, duration })
+    if (text) segments.push({ text, startTime: offset / 1000, endTime: (offset + duration) / 1000 })
   }
   if (segments.length > 0) return segments
-  // Legacy format <text start="..." dur="...">
   const textRe = /<text start="([^"]*)" dur="([^"]*)">([^<]*)<\/text>/g
   while ((m = textRe.exec(xml)) !== null) {
-    const offset = Math.round(parseFloat(m[1]) * 1000)
-    const duration = Math.round(parseFloat(m[2]) * 1000)
+    const offset = parseFloat(m[1])
+    const duration = parseFloat(m[2])
     const text = decodeEntities(m[3].trim())
-    if (text) segments.push({ text, offset, duration })
+    if (text) segments.push({ text, startTime: offset, endTime: offset + duration })
   }
   return segments
 }
@@ -88,30 +121,21 @@ export async function GET(req: NextRequest) {
   if (!videoId) return NextResponse.json({ error: 'missing videoId' }, { status: 400 })
 
   try {
-    // Try both methods
-    let tracks = await fetchViaInnerTube(videoId)
-    if (!tracks) tracks = await fetchViaWebPage(videoId)
-    if (!tracks) return NextResponse.json({ error: 'no_transcript' }, { status: 404 })
+    // Try get_transcript first (YouTube's own transcript API)
+    const fromGetTranscript = await fetchViaGetTranscript(videoId)
+    if (fromGetTranscript?.length) {
+      const segments = fromGetTranscript.map((s, i) => ({ index: i, ...s }))
+      return NextResponse.json({ segments, source: 'get_transcript' })
+    }
 
-    // Prefer Japanese, fallback to first track
-    const track: { languageCode: string; baseUrl: string } =
-      tracks.find((t: { languageCode: string }) => t.languageCode === 'ja') ?? tracks[0]
+    // Fallback: InnerTube Android
+    const fromInnerTube = await fetchViaInnerTube(videoId)
+    if (fromInnerTube?.length) {
+      const segments = fromInnerTube.map((s, i) => ({ index: i, ...s }))
+      return NextResponse.json({ segments, source: 'innertube' })
+    }
 
-    const xmlRes = await fetch(track.baseUrl, {
-      headers: { 'User-Agent': 'Mozilla/5.0' },
-    })
-    if (!xmlRes.ok) return NextResponse.json({ error: 'no_transcript' }, { status: 404 })
-    const xml = await xmlRes.text()
-    const raw = parseXml(xml)
-    if (!raw.length) return NextResponse.json({ error: 'no_transcript' }, { status: 404 })
-
-    const segments = raw.map((s, i) => ({
-      index: i,
-      startTime: s.offset / 1000,
-      endTime: (s.offset + s.duration) / 1000,
-      text: s.text,
-    }))
-    return NextResponse.json({ segments })
+    return NextResponse.json({ error: 'no_transcript' }, { status: 404 })
   } catch (e) {
     console.error('[transcript]', e)
     return NextResponse.json({ error: 'no_transcript' }, { status: 404 })

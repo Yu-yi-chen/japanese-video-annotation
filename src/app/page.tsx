@@ -126,10 +126,8 @@ export default function Home() {
   const [user, setUser] = useState<{ id: string; email?: string; avatar?: string; name?: string } | null>(null)
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data }) => {
-      const u = data.session?.user
-      if (u) setUser({ id: u.id, email: u.email, avatar: u.user_metadata?.avatar_url, name: u.user_metadata?.full_name })
-    })
+    // onAuthStateChange fires immediately with the current session on subscribe,
+    // so no separate getSession() call is needed (avoids auth lock conflicts)
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_e, session) => {
       const u = session?.user
       setUser(u ? { id: u.id, email: u.email, avatar: u.user_metadata?.avatar_url, name: u.user_metadata?.full_name } : null)

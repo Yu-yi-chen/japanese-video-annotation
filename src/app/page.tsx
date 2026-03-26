@@ -12,6 +12,7 @@ import { useSyncEngine } from '@/hooks/useSyncEngine'
 import { TagType, VideoSession } from '@/types'
 import { supabase } from '@/lib/supabase'
 import {
+  Trash2,
   Play,
   AlertCircle,
   X,
@@ -440,6 +441,15 @@ export default function Home() {
           >
             <Menu className="w-5 h-5" />
           </button>
+          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center shadow-lg shadow-indigo-500/20">
+            <Play className="w-4 h-4 text-white" />
+          </div>
+          <h1 className="text-lg font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">
+            Nihonote
+          </h1>
+        </div>
+
+        <div className="flex items-center gap-2">
           <button
             onClick={() => {
               setSession(null)
@@ -453,15 +463,6 @@ export default function Home() {
             <span className="text-base leading-none">+</span>
             新學習
           </button>
-          <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center shadow-lg shadow-indigo-500/20">
-            <Play className="w-4 h-4 text-white" />
-          </div>
-          <h1 className="text-lg font-bold bg-clip-text text-transparent bg-gradient-to-r from-white to-slate-400">
-            Nihonote
-          </h1>
-        </div>
-
-        <div className="flex items-center gap-2">
           {mounted && (
             user ? (
               <button
@@ -619,10 +620,11 @@ export default function Home() {
                   <div className="relative">
                     <button
                       onClick={() => setShowClearConfirm(!showClearConfirm)}
-                      className="p-1.5 rounded-lg text-slate-500 hover:text-red-400 hover:bg-red-950/30 transition-all"
+                      className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl text-xs font-medium text-slate-400 hover:text-red-400 hover:bg-red-950/30 border border-transparent hover:border-red-900/50 transition-all"
                       title="清除所有標註"
                     >
-                      <X className="w-3.5 h-3.5" />
+                      <Trash2 className="w-3.5 h-3.5" />
+                      清除筆記
                     </button>
                     {showClearConfirm && (
                       <div className="absolute right-0 top-full mt-2 z-30 p-3 rounded-xl bg-slate-900 border border-slate-700 shadow-2xl min-w-[180px]">

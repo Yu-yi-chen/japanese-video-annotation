@@ -121,6 +121,7 @@ export default function Home() {
   const [session, setSession] = useState<VideoSession | null>(null)
   const [isPlayerReady, setIsPlayerReady] = useState(false)
   const [mounted, setMounted] = useState(false)
+  const [playerKey, setPlayerKey] = useState(0)
 
   /* ── Auth ── */
   const [user, setUser] = useState<{ id: string; email?: string; avatar?: string; name?: string } | null>(null)
@@ -466,11 +467,24 @@ export default function Home() {
       {/* ── Header ── */}
       <header className="h-16 shrink-0 bg-slate-900/50 backdrop-blur-md border-b border-slate-800 flex items-center justify-between px-4 sm:px-6 relative z-30" style={{ paddingTop: 'env(safe-area-inset-top)' }}>
         <div className="flex items-center gap-3">
-          <button 
+          <button
             onClick={() => setIsSidebarOpen(true)}
             className="p-2 -ml-2 text-slate-400 hover:text-white hover:bg-slate-800 rounded-xl transition-colors"
           >
             <Menu className="w-5 h-5" />
+          </button>
+          <button
+            onClick={() => {
+              setSession(null)
+              setVideoId('')
+              setLoadVideoId(null)
+              setPlayerKey(k => k + 1)
+            }}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl text-xs font-medium bg-indigo-600/15 border border-indigo-500/30 text-indigo-400 hover:bg-indigo-600/25 transition-all"
+            title="開始新的學習"
+          >
+            <span className="text-base leading-none">+</span>
+            新增
           </button>
           <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center shadow-lg shadow-indigo-500/20">
             <Play className="w-4 h-4 text-white" />
@@ -587,8 +601,9 @@ export default function Home() {
           style={{ flexBasis: mounted && window.innerWidth >= 1024 ? `${leftWidth}%` : 'auto' }}
         >
           {/* Player */}
-          <div className="shrink-0 p-4 pb-0 w-full aspect-video">
+          <div className="shrink-0 p-4 pb-0 w-full">
             <VideoPlayer
+              key={playerKey}
               onPlayerReady={handlePlayerReady}
               onVideoLoad={handleVideoLoad}
               loadVideoId={loadVideoId}

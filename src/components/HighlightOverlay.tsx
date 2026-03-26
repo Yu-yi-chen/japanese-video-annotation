@@ -68,7 +68,8 @@ export default function HighlightOverlay({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [segmentId])
 
-  // ── Restore when initialData changes ──
+  // ── Restore when initialData changes (e.g. external reload) ──
+  // NOTE: do NOT reset historyRef here — that would wipe undo history after every auto-save
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -84,7 +85,6 @@ export default function HighlightOverlay({
     } else {
       setIsEmpty(true)
     }
-    historyRef.current = [initialData || '']
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialData])
 

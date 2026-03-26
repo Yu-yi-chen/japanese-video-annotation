@@ -35,10 +35,10 @@ const PEN_COLORS = [
 
 /* ── Highlighter colors (semi-transparent) ── */
 const HL_COLORS = [
-  'rgba(250,204,21,0.45)',  'rgba(249,115,22,0.4)',  'rgba(239,68,68,0.35)',
-  'rgba(34,197,94,0.4)',   'rgba(96,165,250,0.45)',
-  'rgba(168,85,247,0.4)',  'rgba(236,72,153,0.4)',  'rgba(255,255,255,0.3)',
-  'rgba(100,116,139,0.35)','rgba(250,204,21,0.2)',
+  'rgba(250,204,21,0.25)',  'rgba(249,115,22,0.22)',  'rgba(239,68,68,0.2)',
+  'rgba(34,197,94,0.22)',   'rgba(96,165,250,0.25)',
+  'rgba(168,85,247,0.22)',  'rgba(236,72,153,0.22)',  'rgba(255,255,255,0.18)',
+  'rgba(100,116,139,0.2)', 'rgba(250,204,21,0.12)',
 ]
 
 /* ── Nearest size label ── */
@@ -60,7 +60,7 @@ export default function FloatingToolbar({
   setHighlighterColor,
   onUndo,
 }: FloatingToolbarProps) {
-  const [panelOpen, setPanelOpen] = useState(true)
+  const [panelOpen, setPanelOpen] = useState(false)
   const [bottomOffset, setBottomOffset] = useState(24) // 24px = bottom-6
 
   // C2: adjust position when iOS virtual keyboard appears

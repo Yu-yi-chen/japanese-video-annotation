@@ -66,7 +66,7 @@ export default function Home() {
   const [activeTool, setActiveTool] = useState<'pen' | 'highlighter' | 'eraser'>('pen')
   const [brushSize, setBrushSize] = useState(3)
   const [brushColor, setBrushColor] = useState('#e0e0f0')
-  const [highlighterColor, setHighlighterColor] = useState('rgba(250, 204, 21, 0.4)')
+  const [highlighterColor, setHighlighterColor] = useState('rgba(250, 204, 21, 0.25)')
 
   /* ── Sidebar State ── */
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)

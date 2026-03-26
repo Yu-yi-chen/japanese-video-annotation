@@ -67,7 +67,8 @@ export default function HandwritingCanvas({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [segmentId]) // re-init when segment changes
 
-  // ── Restore when initialData changes (e.g. undo reload) ──
+  // ── Restore when initialData changes (e.g. external reload) ──
+  // NOTE: do NOT reset historyRef here — that would wipe undo history after every auto-save
   useEffect(() => {
     const canvas = canvasRef.current
     if (!canvas) return
@@ -83,7 +84,6 @@ export default function HandwritingCanvas({
     } else {
       setIsEmpty(true)
     }
-    historyRef.current = [initialData || '']
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [initialData])
 

@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+export const runtime = 'edge'
+
 const INNERTUBE_URL = 'https://www.youtube.com/youtubei/v1/player?prettyPrint=false'
 const CLIENT_VERSION = '20.10.38'
 const ANDROID_UA = `com.google.android.youtube/${CLIENT_VERSION} (Linux; U; Android 14)`

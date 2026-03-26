@@ -188,10 +188,12 @@ export default function FloatingToolbar({
               key={id}
               onClick={() => {
                 if (activeTool === id) {
-                  if (id !== 'eraser') setPanelOpen(v => !v)
+                  if (id === 'eraser') setPanelOpen(false)
+                  else setPanelOpen(v => !v)
                 } else {
                   setActiveTool(id)
-                  if (id !== 'eraser') setPanelOpen(true)
+                  if (id === 'eraser') setPanelOpen(false)
+                  else setPanelOpen(true)
                 }
               }}
               title={label}

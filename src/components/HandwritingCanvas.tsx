@@ -159,7 +159,7 @@ export default function HandwritingCanvas({
   }
 
   const onPointerDown = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (e.pointerType === 'touch' || activeTool === 'highlighter') return
+    if (e.pointerType === 'touch' || activeTool !== 'pen') return
     e.preventDefault()
     isDrawingRef.current = true
     const canvas = canvasRef.current!
@@ -169,16 +169,16 @@ export default function HandwritingCanvas({
     lastPointRef.current = pt
     const pressure = e.pressure > 0 ? e.pressure : 0.5
     const lw = brushSize * 1.5 * pressure
-    ctx.globalCompositeOperation = activeTool === 'eraser' ? 'destination-out' : 'source-over'
+    ctx.globalCompositeOperation = 'source-over'
     ctx.beginPath()
     ctx.arc(pt.x, pt.y, lw / 2, 0, Math.PI * 2)
-    ctx.fillStyle = activeTool === 'eraser' ? 'rgba(0,0,0,1)' : brushColor
+    ctx.fillStyle = brushColor
     ctx.fill()
     setIsEmpty(false)
   }, [activeTool, brushSize, brushColor])
 
   const onPointerMove = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (e.pointerType === 'touch' || !isDrawingRef.current || activeTool === 'highlighter') return
+    if (e.pointerType === 'touch' || !isDrawingRef.current || activeTool !== 'pen') return
     e.preventDefault()
     const canvas = canvasRef.current!
     const ctx = canvas.getContext('2d')!
@@ -186,11 +186,11 @@ export default function HandwritingCanvas({
     const last = lastPointRef.current
     const pressure = e.pressure > 0 ? e.pressure : 0.5
     const lw = brushSize * 1.5 * pressure
-    ctx.globalCompositeOperation = activeTool === 'eraser' ? 'destination-out' : 'source-over'
+    ctx.globalCompositeOperation = 'source-over'
     ctx.beginPath()
     if (last) ctx.moveTo(last.x, last.y)
     ctx.lineTo(pt.x, pt.y)
-    ctx.strokeStyle = activeTool === 'eraser' ? 'rgba(0,0,0,1)' : brushColor
+    ctx.strokeStyle = brushColor
     ctx.lineWidth = lw
     ctx.lineCap = 'round'
     ctx.lineJoin = 'round'
@@ -199,7 +199,7 @@ export default function HandwritingCanvas({
   }, [activeTool, brushSize, brushColor])
 
   const onPointerUp = useCallback((e: React.PointerEvent<HTMLCanvasElement>) => {
-    if (e.pointerType === 'touch' || activeTool === 'highlighter') return
+    if (e.pointerType === 'touch' || activeTool !== 'pen') return
     if (!isDrawingRef.current) return
     isDrawingRef.current = false
     lastPointRef.current = null

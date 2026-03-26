@@ -250,11 +250,11 @@ export default function Home() {
             )}
           >
             <Play className="w-3.5 h-3.5" />
-            Replay{annotatedCount > 0 && <span className="ml-0.5 opacity-70">({annotatedCount})</span>}
+            Replay{mounted && annotatedCount > 0 && <span className="ml-0.5 opacity-70">({annotatedCount})</span>}
           </button>
 
           {/* Export */}
-          {annotatedCount > 0 && (
+          {mounted && annotatedCount > 0 && (
             <button
               onClick={handleExport}
               className="p-1.5 rounded-xl text-slate-500 hover:text-indigo-400 hover:bg-indigo-950/30 transition-all"
@@ -265,7 +265,7 @@ export default function Home() {
           )}
 
           {/* Clear all */}
-          {annotatedCount > 0 && (
+          {mounted && annotatedCount > 0 && (
             <div className="relative">
               <button
                 onClick={() => setShowClearConfirm(!showClearConfirm)}

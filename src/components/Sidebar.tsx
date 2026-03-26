@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useRef, useEffect } from 'react'
+import Image from 'next/image'
 import {
   FolderPlus, Folder, FolderOpen, FileAudio, ChevronRight, ChevronDown,
   X, MoreVertical, Pencil, Trash2, FolderInput, Search
@@ -381,7 +382,7 @@ export default function Sidebar({ isOpen, onClose, onSelectSession, user }: Side
         {/* Footer */}
         <div className="h-16 shrink-0 border-t border-slate-800 flex items-center px-4 gap-3 bg-slate-900/50">
           {user?.avatar
-            ? <img src={user.avatar} className="w-8 h-8 rounded-full shrink-0" alt="" />
+            ? <Image src={user.avatar} width={32} height={32} className="rounded-full shrink-0" alt="" />
             : <div className="w-8 h-8 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center shrink-0 shadow-lg shadow-indigo-500/20">
                 <span className="text-xs font-bold text-white">{user ? (user.name ?? user.email ?? '?')[0].toUpperCase() : '?'}</span>
               </div>

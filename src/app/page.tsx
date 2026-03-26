@@ -1,6 +1,7 @@
 'use client'
 
 import { useState, useCallback, useRef, useEffect } from 'react'
+import Image from 'next/image'
 import VideoPlayer from '@/components/VideoPlayer'
 import TranscriptView from '@/components/TranscriptView'
 import ReplayMode from '@/components/ReplayMode'
@@ -399,7 +400,7 @@ export default function Home() {
                 title="登出"
               >
                 {user.avatar
-                  ? <img src={user.avatar} className="w-6 h-6 rounded-full" alt="" />
+                  ? <Image src={user.avatar} width={24} height={24} className="rounded-full" alt="" />
                   : <div className="w-6 h-6 rounded-full bg-gradient-to-tr from-indigo-500 to-purple-500 flex items-center justify-center text-[10px] font-bold text-white">{(user.name ?? user.email ?? '?')[0].toUpperCase()}</div>
                 }
                 <span className="text-xs text-slate-400 max-w-[80px] truncate hidden sm:block">{user.name ?? user.email}</span>

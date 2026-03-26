@@ -684,16 +684,6 @@ export default function Home() {
 
         {/* Right Panel: Transcript / Replay */}
         <div className="flex-1 flex flex-col min-w-0 bg-[#0a0d14] relative">
-          {/* Scroll-to-current button */}
-          {isPlayerReady && activeId && mode === 'read' && (
-            <button
-              onClick={() => setScrollTrigger(n => n + 1)}
-              className="absolute top-3 right-3 z-20 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-slate-800/90 border border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-white backdrop-blur-sm transition-all shadow-lg"
-            >
-              <Play className="w-3 h-3" />
-              當前句子
-            </button>
-          )}
           <div ref={transcriptScrollRef} className="absolute inset-0 overflow-y-auto px-4 py-4 transcript-scroll">
             <div className="max-w-4xl mx-auto pb-48">
               {/* Hidden file input */}
@@ -803,7 +793,18 @@ export default function Home() {
             </div>
           </div>
 
-          <FloatingToolbar 
+          {/* Scroll-to-current button — rendered after scroll container so z-index works */}
+          {isPlayerReady && activeId && mode === 'read' && (
+            <button
+              onClick={() => setScrollTrigger(n => n + 1)}
+              className="absolute top-3 right-3 z-30 flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-medium bg-slate-800/90 border border-slate-700 text-slate-300 hover:bg-slate-700 hover:text-white backdrop-blur-sm transition-all shadow-lg"
+            >
+              <Play className="w-3 h-3" />
+              當前句子
+            </button>
+          )}
+
+          <FloatingToolbar
             activeTool={activeTool}
             setActiveTool={setActiveTool}
             brushSize={brushSize}

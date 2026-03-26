@@ -169,7 +169,6 @@ export default function Home() {
     const rows = parsed.map((s, i) => ({
       id: `${videoId}_${i}`,
       video_id: videoId,
-      index: i,
       start_time: s.startTime,
       end_time: s.endTime,
       kanji: s.text,
@@ -177,6 +176,8 @@ export default function Home() {
     }))
     await supabase.from('segments').upsert(rows)
     const segments = rows.map(r => ({ id: r.id, startTime: r.start_time, endTime: r.end_time, kanji: r.kanji }))
+    // Cache segments in localStorage as backup in case Supabase RLS blocks the read
+    try { localStorage.setItem(`segments_${videoId}`, JSON.stringify(segments)) } catch {}
     setSession(prev => prev ? { ...prev, segments } : prev)
     setIsImporting(false)
     addToast(`已匯入 ${segments.length} 句逐字稿`, 'info')
@@ -311,7 +312,6 @@ export default function Home() {
       const rows = data.segments.map((s: { index: number; startTime: number; endTime: number; text: string }) => ({
         id: `${vid}_${s.index}`,
         video_id: vid,
-        index: s.index,
         start_time: s.startTime,
         end_time: s.endTime,
         kanji: s.text,
@@ -321,6 +321,7 @@ export default function Home() {
       const segments = rows.map((r: { id: string; start_time: number; end_time: number; kanji: string }) => ({
         id: r.id, startTime: r.start_time, endTime: r.end_time, kanji: r.kanji,
       }))
+      try { localStorage.setItem(`segments_${vid}`, JSON.stringify(segments)) } catch {}
       setSession(prev => prev ? { ...prev, segments } : prev)
       addToast(`已自動載入 ${segments.length} 句字幕`, 'info')
       return true
@@ -357,17 +358,21 @@ export default function Home() {
       .eq('video_id', id)
       .order('start_time')
     if (!sessionRow) return null
-    return {
-      videoId: sessionRow.video_id,
-      title: sessionRow.title,
-      segments: (segmentRows ?? []).map((r) => ({
-        id: r.id,
-        startTime: r.start_time,
-        endTime: r.end_time,
-        kanji: r.kanji,
-        translation: r.translation ?? undefined,
-      })),
-    } as VideoSession
+    let segments = (segmentRows ?? []).map((r) => ({
+      id: r.id,
+      startTime: r.start_time,
+      endTime: r.end_time,
+      kanji: r.kanji,
+      translation: r.translation ?? undefined,
+    }))
+    // Fall back to localStorage cache if Supabase returned nothing
+    if (segments.length === 0) {
+      try {
+        const cached = localStorage.getItem(`segments_${id}`)
+        if (cached) segments = JSON.parse(cached)
+      } catch {}
+    }
+    return { videoId: sessionRow.video_id, title: sessionRow.title, segments } as VideoSession
   }, [])
 
   /* ── Video Load ── */

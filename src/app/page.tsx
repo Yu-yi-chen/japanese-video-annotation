@@ -308,7 +308,7 @@ export default function Home() {
       await supabase.from('sessions').upsert({ video_id: id, title })
       setSession({ videoId: id, title, segments: [] })
     }
-    reloadForVideo(id)
+    reloadForVideo()
   }, [reloadForVideo, loadSession])
 
   /* ── Player ready ── */

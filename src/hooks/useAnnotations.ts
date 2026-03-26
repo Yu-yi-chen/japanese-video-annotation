@@ -183,7 +183,7 @@ export function useAnnotations({ videoId }: UseAnnotationsOptions) {
     deleteAllAnnotations(videoId)
   }, [videoId])
 
-  const reloadForVideo = useCallback((_newVideoId: string) => {
+  const reloadForVideo = useCallback(() => {
     // handled by useEffect on videoId
   }, [])
 

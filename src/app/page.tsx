@@ -118,7 +118,7 @@ export default function Home() {
   /* ── Sidebar State ── */
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
 
-  /* ── Transcript Upload ── */
+  /* ── Transcript Upload / Auto-fetch ── */
   const [isImporting, setIsImporting] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -247,6 +247,33 @@ export default function Home() {
     setToasts((prev) => prev.filter((t) => t.id !== id))
   }, [])
 
+  const autoFetchTranscript = useCallback(async (vid: string) => {
+    try {
+      const res = await fetch(`/api/transcript?videoId=${vid}`)
+      if (!res.ok) return false
+      const data = await res.json()
+      if (!data.segments?.length) return false
+      const rows = data.segments.map((s: { index: number; startTime: number; endTime: number; text: string }) => ({
+        id: `${vid}_${s.index}`,
+        video_id: vid,
+        index: s.index,
+        start_time: s.startTime,
+        end_time: s.endTime,
+        kanji: s.text,
+        translation: null,
+      }))
+      await supabase.from('segments').upsert(rows)
+      const segments = rows.map((r: { id: string; start_time: number; end_time: number; kanji: string }) => ({
+        id: r.id, startTime: r.start_time, endTime: r.end_time, kanji: r.kanji,
+      }))
+      setSession(prev => prev ? { ...prev, segments } : prev)
+      addToast(`已自動載入 ${segments.length} 句字幕`, 'info')
+      return true
+    } catch {
+      return false
+    }
+  }, [addToast])
+
   /* ── Annotations ── */
   const { metas, saveStatus, saveHighlightCanvas, clearHighlightCanvas, setTag, saveHandwriting, clearHandwriting, clearAll, reloadForVideo } =
     useAnnotations({
@@ -308,9 +335,11 @@ export default function Home() {
       const title = fetchedTitle ?? id
       await supabase.from('sessions').upsert({ video_id: id, title })
       setSession({ videoId: id, title, segments: [] })
+      // Try to auto-fetch YouTube transcript
+      autoFetchTranscript(id)
     }
     reloadForVideo()
-  }, [reloadForVideo, loadSession])
+  }, [reloadForVideo, loadSession, autoFetchTranscript])
 
   /* ── Player ready ── */
   const handlePlayerReady = useCallback((controls: typeof playerControlsRef.current) => {

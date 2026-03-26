@@ -98,7 +98,7 @@ export default function FloatingToolbar({
   ]
 
   return (
-    <div className="fixed left-1/2 lg:left-3/4 -translate-x-1/2 z-50 flex flex-col items-center gap-2 select-none" style={{ bottom: bottomOffset }}>
+    <div className="fixed right-6 z-50 flex flex-col items-end gap-2 select-none" style={{ bottom: bottomOffset }}>
 
       {/* ── Options Panel (size + color) ── */}
       {panelOpen && (

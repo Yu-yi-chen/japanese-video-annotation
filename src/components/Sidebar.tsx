@@ -152,15 +152,26 @@ export default function Sidebar({ isOpen, onClose, onSelectSession, user }: Side
   const confirmDelete = async () => {
     if (!deleteTarget) return
     if (deleteTarget.kind === 'folder') {
+      const folder = folders.find(f => f.id === deleteTarget.folderId)
+      // Delete all sessions inside the folder first
+      if (folder) {
+        for (const s of folder.sessions) {
+          await supabase.from('annotations').delete().eq('video_id', s.id)
+          await supabase.from('segments').delete().eq('video_id', s.id)
+          await supabase.from('folder_sessions').delete().eq('video_id', s.id)
+          await supabase.from('sessions').delete().eq('video_id', s.id)
+          try { localStorage.removeItem(`segments_${s.id}`) } catch {}
+        }
+      }
       await supabase.from('folders').delete().eq('id', deleteTarget.folderId)
       update(prev => prev.filter(f => f.id !== deleteTarget.folderId))
     } else {
       const { sessionId } = deleteTarget
-      // Truly delete the session and all related data
       await supabase.from('annotations').delete().eq('video_id', sessionId)
       await supabase.from('segments').delete().eq('video_id', sessionId)
       await supabase.from('folder_sessions').delete().eq('video_id', sessionId)
       await supabase.from('sessions').delete().eq('video_id', sessionId)
+      try { localStorage.removeItem(`segments_${sessionId}`) } catch {}
       update(prev => prev.map(f => ({ ...f, sessions: f.sessions.filter(s => s.id !== sessionId) })))
       setUnfiledSessions(prev => prev.filter(s => s.id !== sessionId))
     }

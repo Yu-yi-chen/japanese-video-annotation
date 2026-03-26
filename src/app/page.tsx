@@ -330,12 +330,13 @@ export default function Home() {
       } else {
         setSession(s)
       }
+      // Auto-fetch transcript if no segments yet
+      if (s.segments.length === 0) autoFetchTranscript(id)
     } else {
       // New video — auto-create session record with real title
       const title = fetchedTitle ?? id
       await supabase.from('sessions').upsert({ video_id: id, title })
       setSession({ videoId: id, title, segments: [] })
-      // Try to auto-fetch YouTube transcript
       autoFetchTranscript(id)
     }
     reloadForVideo()

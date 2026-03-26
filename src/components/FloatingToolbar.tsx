@@ -101,7 +101,7 @@ export default function FloatingToolbar({
     <div className="fixed left-1/2 lg:left-3/4 -translate-x-1/2 z-50 flex flex-col items-center gap-2 select-none" style={{ bottom: bottomOffset }}>
 
       {/* ── Options Panel (size + color) ── */}
-      {panelOpen && activeTool !== 'eraser' && (
+      {panelOpen && (
         <div className="bg-slate-900/95 backdrop-blur-xl border border-slate-700/80 rounded-2xl shadow-2xl px-4 py-3 flex flex-col gap-3 w-[232px]">
 
           {/* Size dots row */}
@@ -109,6 +109,7 @@ export default function FloatingToolbar({
             {SIZES.map(s => {
               const isActive = sizeLabel === s.label
               const dotPx = Math.round(s.value * 2.4 + 4)
+              const dotColor = activeTool === 'eraser' ? '#64748b' : solidPreview
               return (
                 <button
                   key={s.label}
@@ -126,7 +127,7 @@ export default function FloatingToolbar({
                       style={{
                         width: Math.min(dotPx, 28),
                         height: Math.min(dotPx, 28),
-                        backgroundColor: solidPreview,
+                        backgroundColor: dotColor,
                       }}
                     />
                   </div>
@@ -141,37 +142,39 @@ export default function FloatingToolbar({
             })}
           </div>
 
-          {/* Divider */}
-          <div className="h-px bg-slate-800" />
+          {/* Divider + Color grid — hidden for eraser */}
+          {activeTool !== 'eraser' && <div className="h-px bg-slate-800" />}
 
-          {/* Color grid 2×5 — min 44×44px tap target */}
-          <div className="grid grid-cols-5 gap-1 px-1">
-            {currentColors.map((color) => {
-              const solidColor = color.startsWith('rgba')
-                ? color.replace(/rgba\((.+),[\s\d.]+\)/, 'rgb($1)')
-                : color
-              const isActive = color === currentColor
-              const isLight = solidColor === '#ffffff' || solidColor === '#e0e0f0'
-              return (
-                <button
-                  key={color}
-                  onClick={() => setCurrentColor(color)}
-                  className="flex items-center justify-center min-w-[44px] min-h-[44px]"
-                >
-                  <div
-                    className={clsx(
-                      'w-7 h-7 rounded-full transition-transform duration-150 hover:scale-110',
-                      isActive
-                        ? 'ring-2 ring-offset-[3px] ring-indigo-400 ring-offset-slate-900 scale-110'
-                        : '',
-                      isLight ? 'ring-1 ring-slate-600' : ''
-                    )}
-                    style={{ backgroundColor: solidColor }}
-                  />
-                </button>
-              )
-            })}
-          </div>
+          {/* Color grid 2×5 — hidden for eraser */}
+          {activeTool !== 'eraser' && (
+            <div className="grid grid-cols-5 gap-1 px-1">
+              {currentColors.map((color) => {
+                const solidColor = color.startsWith('rgba')
+                  ? color.replace(/rgba\((.+),[\s\d.]+\)/, 'rgb($1)')
+                  : color
+                const isActive = color === currentColor
+                const isLight = solidColor === '#ffffff' || solidColor === '#e0e0f0'
+                return (
+                  <button
+                    key={color}
+                    onClick={() => setCurrentColor(color)}
+                    className="flex items-center justify-center min-w-[44px] min-h-[44px]"
+                  >
+                    <div
+                      className={clsx(
+                        'w-7 h-7 rounded-full transition-transform duration-150 hover:scale-110',
+                        isActive
+                          ? 'ring-2 ring-offset-[3px] ring-indigo-400 ring-offset-slate-900 scale-110'
+                          : '',
+                        isLight ? 'ring-1 ring-slate-600' : ''
+                      )}
+                      style={{ backgroundColor: solidColor }}
+                    />
+                  </button>
+                )
+              })}
+            </div>
+          )}
         </div>
       )}
 

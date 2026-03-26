@@ -19,6 +19,7 @@ import {
   Check,
   Loader2,
   Download,
+  Pencil,
 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -70,6 +71,25 @@ export default function Home() {
 
   /* ── Sidebar State ── */
   const [isSidebarOpen, setIsSidebarOpen] = useState(false)
+
+  /* ── Title Edit ── */
+  const [isEditingTitle, setIsEditingTitle] = useState(false)
+  const [titleDraft, setTitleDraft] = useState('')
+  const titleInputRef = useRef<HTMLInputElement>(null)
+
+  const startEditTitle = () => {
+    setTitleDraft(session?.title ?? '')
+    setIsEditingTitle(true)
+    setTimeout(() => titleInputRef.current?.select(), 0)
+  }
+
+  const commitTitle = () => {
+    const trimmed = titleDraft.trim()
+    if (trimmed && session) {
+      setSession(prev => prev ? { ...prev, title: trimmed } : prev)
+    }
+    setIsEditingTitle(false)
+  }
 
   useEffect(() => {
     setMounted(true)
@@ -316,13 +336,33 @@ export default function Home() {
 
           {/* Session Title */}
           {session && (
-            <div className="shrink-0 px-5 pt-4 pb-2 flex items-center gap-2 border-b border-slate-800/50">
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium text-slate-300 truncate">
-                  {videoId ? `影片 ID: ${videoId}` : '示範逐字稿（貼入 YouTube URL 載入真實影片）'}
-                </p>
-              </div>
-              <span className="text-xs text-slate-500 font-medium px-2 py-1 rounded-md bg-slate-800/50">
+            <div className="shrink-0 px-4 pt-3 pb-2 flex items-center gap-2 border-b border-slate-800/50">
+              {isEditingTitle ? (
+                <input
+                  ref={titleInputRef}
+                  value={titleDraft}
+                  onChange={e => setTitleDraft(e.target.value)}
+                  onBlur={commitTitle}
+                  onKeyDown={e => {
+                    if (e.key === 'Enter') commitTitle()
+                    if (e.key === 'Escape') setIsEditingTitle(false)
+                  }}
+                  className="flex-1 min-w-0 bg-slate-800 border border-indigo-500/60 rounded-lg px-2 py-1 text-sm font-medium text-slate-100 outline-none"
+                  autoFocus
+                />
+              ) : (
+                <button
+                  onClick={startEditTitle}
+                  className="flex-1 min-w-0 flex items-center gap-1.5 group text-left"
+                  title="點擊修改筆記名稱"
+                >
+                  <span className="text-sm font-medium text-slate-300 truncate group-hover:text-white transition-colors">
+                    {session.title || '未命名筆記'}
+                  </span>
+                  <Pencil className="w-3 h-3 text-slate-600 group-hover:text-slate-400 shrink-0 transition-colors" />
+                </button>
+              )}
+              <span className="text-xs text-slate-500 font-medium px-2 py-1 rounded-md bg-slate-800/50 shrink-0">
                 {session.segments.length} 句
               </span>
             </div>

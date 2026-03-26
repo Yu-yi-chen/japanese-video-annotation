@@ -825,7 +825,8 @@ export default function Home() {
         onClose={() => setIsSidebarOpen(false)}
         user={user}
         onSelectSession={(id) => {
-          setLoadVideoId(id)
+          setLoadVideoId(id)      // tell VideoPlayer to load the video
+          handleVideoLoad(id)     // load session data (transcript + annotations) immediately
           setIsSidebarOpen(false)
         }}
       />

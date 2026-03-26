@@ -26,7 +26,7 @@ interface FolderData {
 
 type MenuTarget =
   | { kind: 'folder'; folderId: string }
-  | { kind: 'session'; folderId: string; sessionId: string }
+  | { kind: 'session'; folderId: string | null; sessionId: string }
   | null
 
 /* ─── Props ─── */
@@ -155,15 +155,14 @@ export default function Sidebar({ isOpen, onClose, onSelectSession, user }: Side
       await supabase.from('folders').delete().eq('id', deleteTarget.folderId)
       update(prev => prev.filter(f => f.id !== deleteTarget.folderId))
     } else {
-      await supabase.from('folder_sessions')
-        .delete()
-        .eq('folder_id', deleteTarget.folderId)
-        .eq('video_id', deleteTarget.sessionId)
-      update(prev => prev.map(f =>
-        f.id === deleteTarget.folderId
-          ? { ...f, sessions: f.sessions.filter(s => s.id !== deleteTarget.sessionId) }
-          : f
-      ))
+      const { sessionId } = deleteTarget
+      // Truly delete the session and all related data
+      await supabase.from('annotations').delete().eq('video_id', sessionId)
+      await supabase.from('segments').delete().eq('video_id', sessionId)
+      await supabase.from('folder_sessions').delete().eq('video_id', sessionId)
+      await supabase.from('sessions').delete().eq('video_id', sessionId)
+      update(prev => prev.map(f => ({ ...f, sessions: f.sessions.filter(s => s.id !== sessionId) })))
+      setUnfiledSessions(prev => prev.filter(s => s.id !== sessionId))
     }
     setDeleteTarget(null)
   }
@@ -275,16 +274,32 @@ export default function Sidebar({ isOpen, onClose, onSelectSession, user }: Side
                   .map(s => (
                     <div
                       key={s.id}
-                      onClick={() => onSelectSession(s.id)}
+                      onClick={() => { if (!editingId) onSelectSession(s.id) }}
                       className="flex items-center gap-2 px-2 py-2 rounded-lg hover:bg-slate-800/80 cursor-pointer group transition-colors"
                     >
                       <FileAudio className="w-3.5 h-3.5 text-emerald-400/70 shrink-0 group-hover:text-emerald-400" />
                       <div className="flex-1 min-w-0">
-                        <span className="text-xs font-medium text-slate-300 group-hover:text-white truncate block">
-                          {s.title}
-                        </span>
+                        {editingId === s.id ? (
+                          <input
+                            ref={editInputRef}
+                            value={editingValue}
+                            onChange={e => setEditingValue(e.target.value)}
+                            onBlur={commitRename}
+                            onKeyDown={e => { if (e.key === 'Enter') commitRename(); if (e.key === 'Escape') setEditingId(null) }}
+                            onClick={e => e.stopPropagation()}
+                            className="w-full bg-slate-700 text-slate-100 text-xs rounded px-1.5 py-0.5 outline-none border border-indigo-500"
+                          />
+                        ) : (
+                          <span className="text-xs font-medium text-slate-300 group-hover:text-white truncate block">{s.title}</span>
+                        )}
                         <span className="text-[10px] text-slate-500">{s.date}</span>
                       </div>
+                      <button
+                        onClick={e => openMenu(e, { kind: 'session', folderId: null, sessionId: s.id })}
+                        className="p-1 rounded hover:bg-slate-700 text-slate-500 hover:text-slate-200 opacity-0 group-hover:opacity-100 transition-opacity shrink-0"
+                      >
+                        <MoreVertical className="w-3.5 h-3.5" />
+                      </button>
                     </div>
                   ))}
               </div>
@@ -410,8 +425,10 @@ export default function Sidebar({ isOpen, onClose, onSelectSession, user }: Side
                 const f = folders.find(f => f.id === t.folderId)
                 if (f) { setEditingId(f.id); setEditingValue(f.name) }
               } else {
-                const f = folders.find(f => f.id === t.folderId)
-                const s = f?.sessions.find(s => s.id === t.sessionId)
+                // Find in folders or unfiled
+                const inFolder = t.folderId ? folders.find(f => f.id === t.folderId)?.sessions.find(s => s.id === t.sessionId) : null
+                const inUnfiled = unfiledSessions.find(s => s.id === t.sessionId)
+                const s = inFolder ?? inUnfiled
                 if (s) { setEditingId(s.id); setEditingValue(s.title) }
               }
             }}

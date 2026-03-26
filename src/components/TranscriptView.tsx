@@ -21,6 +21,7 @@ interface TranscriptViewProps {
   brushSize: number
   brushColor: string
   scrollContainerRef?: React.RefObject<HTMLDivElement>
+  scrollTrigger?: number
 }
 
 const TAG_CONFIG: Record<TagType, { icon: React.ReactNode; label: string; color: string }> = {
@@ -43,6 +44,7 @@ export default function TranscriptView({
   brushSize,
   brushColor,
   scrollContainerRef,
+  scrollTrigger,
 }: TranscriptViewProps) {
   const [searchQuery, setSearchQuery] = useState('')
   const activeRef = useRef<HTMLDivElement>(null)
@@ -72,6 +74,13 @@ export default function TranscriptView({
       activeRef.current.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
     }
   }, [activeId])
+
+  // Force scroll to active when triggered (overrides user scroll lock)
+  useEffect(() => {
+    if (scrollTrigger === undefined || scrollTrigger === 0) return
+    userScrollingRef.current = false
+    activeRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' })
+  }, [scrollTrigger])
 
   const q = searchQuery.trim().toLowerCase()
   const visibleSegments = q

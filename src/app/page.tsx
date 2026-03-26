@@ -355,12 +355,12 @@ export default function Home() {
       .from('segments')
       .select('id, start_time, end_time, kanji, translation')
       .eq('video_id', id)
-      .order('index')
-    if (!sessionRow || !segmentRows) return null
+      .order('start_time')
+    if (!sessionRow) return null
     return {
       videoId: sessionRow.video_id,
       title: sessionRow.title,
-      segments: segmentRows.map((r) => ({
+      segments: (segmentRows ?? []).map((r) => ({
         id: r.id,
         startTime: r.start_time,
         endTime: r.end_time,

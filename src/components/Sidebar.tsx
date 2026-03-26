@@ -102,8 +102,8 @@ export default function Sidebar({ isOpen, onClose, onSelectSession, user }: Side
   useEffect(() => {
     if (!menuTarget) return
     const handler = () => setMenuTarget(null)
-    window.addEventListener('pointerdown', handler, { capture: true })
-    return () => window.removeEventListener('pointerdown', handler, { capture: true })
+    window.addEventListener('pointerdown', handler)
+    return () => window.removeEventListener('pointerdown', handler)
   }, [menuTarget])
 
   /* ── Helpers ── */

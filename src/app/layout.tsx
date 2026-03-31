@@ -12,6 +12,12 @@ export const viewport: Viewport = {
 export const metadata: Metadata = {
   title: "Nihonote",
   description: "以 YouTube 影片學習日文，搭配逐字稿同步、手寫標註與 Apple Pencil 支援",
+  manifest: '/manifest.webmanifest',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'Nihonote',
+  },
 };
 
 export default function RootLayout({
